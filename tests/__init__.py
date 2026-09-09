@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-"""Test package for BOK project."""
+"""Test package for QMind project."""

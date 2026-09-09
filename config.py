@@ -9,10 +9,11 @@ logger = logging.getLogger(__name__)
 
 # ── 유니버스 스위치 ────────────────────────────────────────────────────────────
 # 우선순위: .env 의 BENCHMARK > 아래 상수. .env 에서 MXCN1A/MXWO 블록 중 하나만
-# 활성(나머지 주석)으로 두면 되고, .env 에 BENCHMARK 가 없으면 아래 값이 쓰인다.
+# 활성(나머지 주석)으로 두면 되고, .env 에 BENCHMARK 가 없으면 아래 값이 쓰인다
+# (.env 없는 CI 가 이 경로를 탄다). 기본값은 2026-09-09 MXCN1A -> MXWO 로 전환.
 # 이 값 하나로 DB/universe 식별자, PIPELINE_PARAMS 유니버스별 값, output/{BENCHMARK}/,
 # data/{BENCHMARK}_* 데이터 파일이 전부 결정된다 (2026-09-02 통합).
-BENCHMARK = os.getenv("BENCHMARK") or "MXCN1A"
+BENCHMARK = os.getenv("BENCHMARK") or "MXWO"
 
 UNIVERSES = {
     "MXCN1A": {"universe": "clarifi_mxcn1a_afl", "server_name": "10.206.1.19,9433", "db_name": "GLOBAL"},

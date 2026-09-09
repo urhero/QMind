@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Shared pytest fixtures for BOK tests.
+Shared pytest fixtures for QMind tests.
 
 이 파일에는 테스트에서 공통으로 사용하는 데이터와 설정이 포함됩니다.
 """

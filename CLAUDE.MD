@@ -1,8 +1,8 @@
-# CLAUDE.MD - BOK
+# CLAUDE.MD - QMind
 
 ## Project Overview
 
-팩터 기반 포트폴리오 구성 파이프라인. 200+ 금융 팩터를 SQL Server에서 가져와 5분위 분석, 팩터 랭킹, style_cap 재분배를 거쳐 Constrained EW(CEW) 종목별 비중을 산출한다. 공분산/리스크 모델 기반 최적화는 포함하지 않는다 (커밋 `8dfb64e`에서 제거).
+팩터 기반 포트폴리오 구성 파이프라인 (구 이름 BOK — 원래 MXCN1A 전용으로 만들었다가 MXWO 로 확장, 2026-09-09 QMind 로 개명). 200+ 금융 팩터를 SQL Server에서 가져와 5분위 분석, 팩터 랭킹, style_cap 재분배를 거쳐 Constrained EW(CEW) 종목별 비중을 산출한다. 공분산/리스크 모델 기반 최적화는 포함하지 않는다 (커밋 `8dfb64e`에서 제거).
 
 ## 외부 맥락 (코드에 없는 것)
 
@@ -13,13 +13,13 @@
 
 - **코드:** 영문 (변수명, 함수명)
 - **문서/주석:** 한글 (투자/금융 도메인)
-- **Git:** `main-ikm`에서 개발 → `main`으로 머지
+- **Git (2026-09-09):** 유니버스별 개발 브랜치에서 작업 → `main` 머지. `main_mxwo`(MXWO, 워크트리 `C:\Users\IKM\QMind_mxwo`) / `main_mxcn1a`(MXCN1A, 워크트리 `C:\Users\IKM\QMind_mxcn1a`) / `main`(통합본, 기본 MXWO, `C:\Users\IKM\QMind`). `main` 은 파라미터(BENCHMARK)만 바꾸면 두 유니버스 모두 실행돼야 하고, 머지가 끝난 시점에는 세 브랜치가 같은 커밋이다. 워크트리마다 자기 `.env`(BENCHMARK 고정)를 둔다 — `load_dotenv` 가 상위 폴더 `.env` 를 주워 오므로 워크트리를 리포 안(`.claude/worktrees/`)에 만들지 말 것
 - **HTML 생성:** HTML/리포트/페이지를 만들 때는 `supanova-design-engine` 스킬을 사용한다 (프리미엄 standalone HTML — Tailwind CDN + Pretendard + Iconify Solar, 다크 기본, 이모지/금지폰트 배제). 프로젝트 브랜드 컬러가 필요하면 `docs/design/DESIGN-binance.md`의 토큰을 supanova에 입력으로 넣는다 (supanova = 생성 엔진, DESIGN-binance = 선택적 브랜드 팔레트).
 
 ## 환경 설정
 
 - `config.py`가 `.env`에서 `python-dotenv`로 로드 (DB 비밀번호 등)
-- **유니버스 전환:** `.env`의 `BENCHMARK`(MXCN1A/MXWO, 없으면 `config.py` 상수). 이 값이 `PIPELINE_PARAMS`(공통+유니버스별), `output/{BENCHMARK}/`, `data/{BENCHMARK}_*` 를 전부 결정. 일회성 덮어쓰기는 `BENCHMARK=MXWO python main.py ...` (환경변수가 `.env` 보다 우선). **로컬 `.env` 는 사용자 관리 — Claude 가 수정하지 않는다**
+- **유니버스 전환:** `.env`의 `BENCHMARK`(MXCN1A/MXWO, 없으면 `config.py` 상수 = MXWO). 이 값이 `PIPELINE_PARAMS`(공통+유니버스별), `output/{BENCHMARK}/`, `data/{BENCHMARK}_*` 를 전부 결정. 일회성 덮어쓰기는 `BENCHMARK=MXWO python main.py ...` (환경변수가 `.env` 보다 우선). **로컬 `.env` 는 사용자 관리 — Claude 가 수정하지 않는다**
 - 설치: `pipenv install`
 - 테스트: `python -m pytest tests/test_unit/ -v`
 

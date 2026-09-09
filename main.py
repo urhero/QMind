@@ -1,4 +1,4 @@
-"""BOK CLI 진입점.
+"""QMind (구 BOK) CLI 진입점.
 
 사용법:
     python main.py download 2023-01-01 2023-12-31          # 전체 다운로드

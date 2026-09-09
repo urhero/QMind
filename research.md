@@ -1,4 +1,4 @@
-# BOK 심층 분석 보고서
+# QMind 심층 분석 보고서
 
 > 최종 갱신: 2026-07-05
 > 분석 범위: 프로젝트 전체 (13개 프로덕션 모듈, 6개 테스트 모듈, 설정/데이터 파일)
@@ -9,7 +9,7 @@
 
 ### 1.1 목적
 
-BOK은 **팩터 기반 Model Portfolio(MP) 생성 파이프라인**이다. 200+개 금융 팩터를 분석하여 최종 종목별 투자 비중(MP)을 산출하고, Bloomberg Optimizer에서 바로 사용 가능한 CSV를 생성한다. **MXCN1A(중국 A주)와 MXWO(MSCI World) 두 유니버스를 한 코드베이스가 지원**하며(2026-09-02 통합), 유니버스는 `BENCHMARK`(`.env` 우선, 없으면 `config.py` 상수)가 결정한다 — 아래 [1.1 유니버스 분리](#11-유니버스-분리-2026-09-02) 참조. 본문 서술은 MXWO 채택 스택 기준이며, MXWO의 MP는 **롤링 IS 48개월 + rank_score 순수 Top-50 선정(클러스터 dedup off) + ERC(수축 0.2)·TS모멘텀 틸트 가중 + `style_cap`(25%)/섹터 숏캡(15%)** 으로 구성된다 (관례상 라벨은 Constrained EW) — 공분산/리스크 모델 기반의 종목단 최적화는 커밋 `8dfb64e`에서 제거됨.
+QMind(구 BOK — 원래 MXCN1A 전용으로 만들었다가 MXWO 로 확장, 2026-09-09 개명)은 **팩터 기반 Model Portfolio(MP) 생성 파이프라인**이다. 200+개 금융 팩터를 분석하여 최종 종목별 투자 비중(MP)을 산출하고, Bloomberg Optimizer에서 바로 사용 가능한 CSV를 생성한다. **MXCN1A(중국 A주)와 MXWO(MSCI World) 두 유니버스를 한 코드베이스가 지원**하며(2026-09-02 통합), 유니버스는 `BENCHMARK`(`.env` 우선, 없으면 `config.py` 상수)가 결정한다 — 아래 [1.1 유니버스 분리](#11-유니버스-분리-2026-09-02) 참조. 본문 서술은 MXWO 채택 스택 기준이며, MXWO의 MP는 **롤링 IS 48개월 + rank_score 순수 Top-50 선정(클러스터 dedup off) + ERC(수축 0.2)·TS모멘텀 틸트 가중 + `style_cap`(25%)/섹터 숏캡(15%)** 으로 구성된다 (관례상 라벨은 Constrained EW) — 공분산/리스크 모델 기반의 종목단 최적화는 커밋 `8dfb64e`에서 제거됨.
 
 ### 핵심 Funnel 구조
 
@@ -59,7 +59,8 @@ main.py (CLI)
 
 ### 1.1 유니버스 분리 (2026-09-02)
 
-- `config.py`: `BENCHMARK = os.getenv("BENCHMARK") or "MXCN1A"` -> `UNIVERSES[BENCHMARK]`(universe/server/db; `.env` 값이 있으면 우선) -> `PARAM`.
+- `config.py`: `BENCHMARK = os.getenv("BENCHMARK") or "MXWO"` (폴백 기본값 2026-09-09 MXCN1A -> MXWO; `.env` 없는 CI 가 이 경로) -> `UNIVERSES[BENCHMARK]`(universe/server/db; `.env` 값이 있으면 우선) -> `PARAM`.
+  개발은 `main_mxwo` / `main_mxcn1a` 브랜치(형제 폴더 워크트리, 각자 `.env`) -> `main` 머지 (README "유니버스 전환" 표).
   `PIPELINE_PARAMS = {**_COMMON_PARAMS, **_UNIVERSE_PARAMS[BENCHMARK]}`. 미등록 값은 `KeyError`.
 - `service/paths.py`: `OUTPUT_DIR = output/{BENCHMARK}/` (구 "MXCN1A 만 루트 `output/`" 예외 제거), `HISTORY_DIR = OUTPUT_DIR/mp_weight_history/`.
 - 유니버스 종속 데이터는 전부 `data/{BENCHMARK}_` 접두어: 팩터/수익률 parquet, `_country_map.parquet`, `_bmwgt.parquet`,

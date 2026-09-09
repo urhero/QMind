@@ -202,7 +202,7 @@ def build():
 TEMPLATE = r"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BOK · Module Dependency Map</title>
+<title>QMind · Module Dependency Map</title>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -277,7 +277,7 @@ body{margin:0;background:var(--canvas);color:var(--body);height:100vh;overflow:h
 </style></head>
 <body>
 <div class="win">
-  <div class="subbar"><b>BOK 팩터 파이프라인 — 모듈 의존성 맵</b>
+  <div class="subbar"><b>QMind 팩터 파이프라인 — 모듈 의존성 맵</b>
     <span class="pill">22 모듈</span><span class="pill p">Python</span>
     <span class="pill g">Factor Pipeline</span></div>
   <div class="body">

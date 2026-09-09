@@ -1,10 +1,11 @@
 # 📘 엔드투엔드 팩터 파이프라인 요약 — MXCN1A / MXWO 유니버스
-[[pytest](https://github.com/urhero/bok/actions/workflows/test.yml/badge.svg)](https://github.com/urhero/bok/actions/workflows/test.yml)
+[[pytest](https://github.com/urhero/QMind/actions/workflows/test.yml/badge.svg)](https://github.com/urhero/QMind/actions/workflows/test.yml)
 
 *(Code → Investment Process 매핑)*
 
-> **하나의 코드베이스가 MXCN1A(중국 A주)와 MXWO(MSCI World) 두 유니버스를 지원합니다**
-> (2026-09-02 `mxwo_sharpe1` 브랜치 통합). 선정·가중 방법론은 유니버스별로 따로 튜닝돼 있고,
+> **QMind(구 BOK) — 하나의 코드베이스가 MXCN1A(중국 A주)와 MXWO(MSCI World) 두 유니버스를 지원합니다.**
+> 원래 MXCN1A 전용(BOK)으로 만들었다가 2026-09-02 `mxwo_sharpe1` 브랜치를 통합해 MXWO 로 확장했고,
+> 2026-09-09 QMind 로 개명하면서 기본 유니버스를 MXWO 로 바꿨다. 선정·가중 방법론은 유니버스별로 따로 튜닝돼 있고,
 > `BENCHMARK` 값 하나로 파라미터·DB·출력 폴더·데이터 파일이 전부 결정됩니다 —
 > [유니버스 전환](#유니버스-전환) 및 문서 끝의 [유니버스별 파라미터](#유니버스별-파라미터-mxcn1a-vs-mxwo) 참조.
 > 본문 각 단계의 수치 예시(롤링 IS 48개월, 순수 Top-50, 섹터 숏캡 등)는 **MXWO 기준**이며,
@@ -18,19 +19,28 @@
 ## 유니버스 전환
 
 ```bash
-# .env — 두 블록 중 하나만 활성 (안 쓰는 쪽은 주석). BENCHMARK 가 없으면 config.py 의 BENCHMARK 상수(기본 MXCN1A)
-BENCHMARK=MXCN1A          # 또는 MXWO
-UNIVERSE=clarifi_mxcn1a_afl
-SERVER_NAME=10.206.1.19,9433
-DB_NAME=GLOBAL
+# .env — 두 블록 중 하나만 활성 (안 쓰는 쪽은 주석). BENCHMARK 가 없으면 config.py 의 BENCHMARK 상수(기본 MXWO)
+BENCHMARK=MXWO            # 또는 MXCN1A
+UNIVERSE=clarifi_mxwo_afl
+SERVER_NAME=10.206.101.14
+DB_NAME=kb_global
 
 # 일회성으로 덮어쓰기 (환경변수가 .env 보다 우선)
-BENCHMARK=MXWO python main.py backtest 2015-06-30 2026-07-31
+BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 ```
 
 `BENCHMARK` 하나로 `config.py`가 `PARAM`(DB/universe), `PIPELINE_PARAMS`(공통 + 유니버스별 오버라이드),
 `service/paths.py`의 `OUTPUT_DIR = output/{BENCHMARK}/`, 유니버스 종속 데이터(`data/{BENCHMARK}_*`)를 전부 결정한다.
 미등록 값은 `KeyError`로 즉시 실패한다. 두 유니버스의 파라미터 차이는 [유니버스별 파라미터](#유니버스별-파라미터-mxcn1a-vs-mxwo).
+
+**개발 브랜치/워크트리 (2026-09-09):** 유니버스별 개발은 전용 브랜치 + 형제 폴더 워크트리에서 하고 `main` 으로 머지한다.
+머지가 끝난 시점에는 세 브랜치가 같은 커밋이다. 워크트리마다 자기 `.env`(BENCHMARK 고정)를 둔다.
+
+| 브랜치 | 역할 | 폴더 | `.env` BENCHMARK |
+|---|---|---|---|
+| `main` | 통합본 (기본 MXWO, 파라미터만 바꾸면 양 유니버스 실행) | `C:\Users\IKM\QMind` | 자유 |
+| `main_mxwo` | MXWO 개발 → `main` 머지 | `C:\Users\IKM\QMind_mxwo` | MXWO |
+| `main_mxcn1a` | MXCN1A 개발 → `main` 머지 | `C:\Users\IKM\QMind_mxcn1a` | MXCN1A |
 
 ---
 

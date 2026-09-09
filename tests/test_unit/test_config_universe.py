@@ -44,6 +44,13 @@ def test_env_overrides_db_identity(monkeypatch):
     assert cfg.PARAM["server_name"] == "my-host"
 
 
+def test_default_benchmark_is_mxwo(monkeypatch):
+    """BENCHMARK 미설정(.env 없는 CI 경로) 폴백 = MXWO (2026-09-09, 구 MXCN1A)."""
+    cfg = _load(monkeypatch, "")  # 빈 값 = 미설정; load_dotenv 는 이미 있는 키를 덮지 않는다
+    assert cfg.PARAM["benchmark"] == "MXWO"
+    assert cfg.PIPELINE_PARAMS["transaction_cost_bps"] == 10.0
+
+
 def test_unknown_benchmark_fails_fast(monkeypatch):
     monkeypatch.setenv("BENCHMARK", "NOPE")
     import config
