@@ -57,7 +57,7 @@ def test_apply_country_tax_flag_disables(patched_rates, monkeypatch):
 
 def test_missing_country_map_degrades_to_zero(monkeypatch, tmp_path):
     """국가맵 파일이 없으면 크래시 대신 세금 0 (CI/미매핑 유니버스 대비)."""
-    monkeypatch.setattr(tt, "DATA_DIR", tmp_path)
+    monkeypatch.setattr("service.paths.DATA_DIR", tmp_path)  # universe_data_dir 이 참조
     tt._rate_frame.cache_clear()
     try:
         assert tt.tax_cost(pd.Series({"X": 1.0}), benchmark="NO_SUCH_BM") == 0.0

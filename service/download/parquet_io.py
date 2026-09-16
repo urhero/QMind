@@ -4,10 +4,10 @@
 GitHub 100MB 파일 크기 제한을 우회하기 위해 대용량 factor parquet를
 연도별로 분할 저장하고, 로드 시 투명하게 병합한다.
 
-파일 명명 규칙:
-    data/MXCN1A_factor_2018.parquet
+파일 명명 규칙 (data_dir = data/{BENCHMARK}/):
+    data/MXCN1A/factor_2018.parquet
     ...
-    data/MXCN1A_factor_2026.parquet
+    data/MXCN1A/factor_2026.parquet
 """
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 def save_factor_parquet_by_year(
     df: pd.DataFrame,
     data_dir: str | Path,
-    benchmark: str = "MXCN1A",
     compression: str = "zstd",
     *,
     years: set[int] | None = None,
@@ -36,8 +35,7 @@ def save_factor_parquet_by_year(
 
     Args:
         df: factor DataFrame (ddt 컬럼 필수)
-        data_dir: 저장 디렉토리
-        benchmark: 벤치마크명 (파일 접두사)
+        data_dir: 저장 디렉토리 (유니버스 폴더)
         compression: 압축 방식
         years: 지정하면 해당 연도만 저장 (증분 모드용). None이면 전체.
 
@@ -58,7 +56,7 @@ def save_factor_parquet_by_year(
 
     saved: list[Path] = []
     for year, group in df.groupby(year_ser):
-        out = data_dir / f"{benchmark}_factor_{year}.parquet"
+        out = data_dir / f"factor_{year}.parquet"
         group.to_parquet(
             out, index=False, compression=compression,
         )
@@ -79,7 +77,6 @@ def save_factor_parquet_by_year(
 
 def load_factor_parquet(
     data_dir: str | Path,
-    benchmark: str = "MXCN1A",
     start_year: int | None = None,
     end_year: int | None = None,
     *,
@@ -88,12 +85,11 @@ def load_factor_parquet(
 ) -> pd.DataFrame:
     """연도별 분할 parquet을 로드하여 하나의 DataFrame으로 반환.
 
-    분할 파일(MXCN1A_factor_YYYY.parquet)만 지원 — start/end_year 로 연도 선택 로드.
+    분할 파일(factor_YYYY.parquet)만 지원 — start/end_year 로 연도 선택 로드.
     파일이 없으면 FileNotFoundError.
 
     Args:
-        data_dir: parquet 디렉토리
-        benchmark: 벤치마크명
+        data_dir: parquet 디렉토리 (유니버스 폴더 data/{BENCHMARK}/)
         start_year: 시작 연도. 주어지면 해당 연도부터만 로드
         end_year: 종료 연도. 주어지면 해당 연도까지만 로드
         validate: True이면 로드 후 데이터 무결성 검증. ERROR 발견 시 RuntimeError.
@@ -107,7 +103,7 @@ def load_factor_parquet(
         FileNotFoundError: parquet 파일이 없는 경우
         RuntimeError: validate=True이고 ERROR 수준 문제 발견 시
     """
-    split_files = list_yearly_parquets(data_dir, benchmark)
+    split_files = list_yearly_parquets(data_dir)
     if not split_files:
         raise FileNotFoundError(f"No factor parquet found at {data_dir}")
     if start_year or end_year:
@@ -115,8 +111,7 @@ def load_factor_parquet(
         split_files = [f for f in split_files if sy <= int(f.stem.rsplit("_", 1)[-1]) <= ey]
         if not split_files:
             raise FileNotFoundError(
-                f"No yearly parquets for {benchmark} in year range "
-                f"{start_year}~{end_year} at {data_dir}"
+                f"No yearly parquets in year range {start_year}~{end_year} at {data_dir}"
             )
 
     frames = [pd.read_parquet(f, columns=columns) for f in split_files]
@@ -140,14 +135,9 @@ def load_factor_parquet(
     return result
 
 
-def list_yearly_parquets(
-    data_dir: str | Path,
-    benchmark: str = "MXCN1A",
-) -> list[Path]:
+def list_yearly_parquets(data_dir: str | Path) -> list[Path]:
     """디렉토리에 있는 연도별 분할 parquet 경로 리스트를 반환."""
-    return sorted(
-        Path(data_dir).glob(f"{benchmark}_factor_[0-9][0-9][0-9][0-9].parquet")
-    )
+    return sorted(Path(data_dir).glob("factor_[0-9][0-9][0-9][0-9].parquet"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

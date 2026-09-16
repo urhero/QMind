@@ -28,7 +28,7 @@ from service.factor.selection import (
     compute_rank_score,
     compute_tstat,
 )
-from service.paths import HISTORY_DIR, OUTPUT_DIR, dated
+from service.paths import HISTORY_DIR, OUTPUT_DIR, TEST_OUTPUT_DIR, dated
 from service.pipeline.weight_history import load_prev_selection
 from utils.validation import validate_return_matrix
 
@@ -101,7 +101,8 @@ def evaluate_universe(kept_abbrs, kept_names, kept_styles, filtered_data, end_da
     # 메타 저장 (clustering 적용 전 전체 universe 메타)
     if test_file:
         suffix = f"_{Path(test_file).stem}"
-        meta.to_csv(OUTPUT_DIR / f"meta_data_test{suffix}.csv", index=False)
+        TEST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        meta.to_csv(TEST_OUTPUT_DIR / f"meta_data_test{suffix}.csv", index=False)
     else:
         # 기준일 = 수익률 행렬의 마지막 월
         meta.to_csv(dated(OUTPUT_DIR / "meta_data.csv", ret_df.index.max()), index=False)

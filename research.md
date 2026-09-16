@@ -63,7 +63,7 @@ main.py (CLI)
   개발은 `main_mxwo` / `main_mxcn1a` 브랜치(형제 폴더 워크트리, 각자 `.env`) -> `main` 머지 (README "유니버스 전환" 표).
   `PIPELINE_PARAMS = {**_COMMON_PARAMS, **_UNIVERSE_PARAMS[BENCHMARK]}`. 미등록 값은 `KeyError`.
 - `service/paths.py`: `OUTPUT_DIR = output/{BENCHMARK}/` (구 "MXCN1A 만 루트 `output/`" 예외 제거), `HISTORY_DIR = OUTPUT_DIR/mp_weight_history/`.
-- 유니버스 종속 데이터는 전부 `data/{BENCHMARK}_` 접두어: 팩터/수익률 parquet, `_country_map.parquet`, `_bmwgt.parquet`,
+- 유니버스 종속 데이터는 전부 `data/{BENCHMARK}/` 폴더 (2026-09-09, 구 `{BENCHMARK}_` 접두어): 팩터/수익률 parquet, `country_map.parquet`, `bmwgt.parquet`,
   `_bm_returns.csv`(대시보드 BM 오버레이), `_mp_target_gross.csv` / `_mp_multiplier.csv`(배포 배수 이력). 파일이 없으면 해당 기능은 no-op
   (MXCN1A: BM 오버레이 생략). 거래세는 파일 유무가 아니라 `apply_country_tax` 로 명시 제어 (MXCN1A False —
   2026-09-02 재다운로드가 `MXCN1A_country_map.parquet` 를 만들자 HKG 등록 A주 4종에 홍콩 인지세가 붙는 것을 막기 위해 도입).
@@ -84,7 +84,7 @@ main.py (CLI)
 | `mp_target_gross` | 0.14 (롱 +7% / 숏 -7%, 2026-08-31 스냅샷부터; 이전은 배수 1.0) | 0.40 (롱 +20% / 숏 -20%) |
 | `apply_country_tax` | False (A주는 등록지 무관하게 본토 인지세 대상 — 등록지 세율표 부적합) | True (COUNTRY_TAX_BPS, 실측 회계 전용) |
 | 출력 경로 | `output/MXCN1A/` | `output/MXWO/` |
-| 유니버스 종속 데이터 | `data/MXCN1A_*` (+ `_mp_target_gross.csv`) | `data/MXWO_*` (+ `_mp_target_gross.csv`, `_mp_multiplier.csv`, `_bm_returns.csv`, `_bmwgt.parquet`, `_country_map.parquet`) |
+| 유니버스 종속 데이터 | `data/MXCN1A/` (+ `mp_target_gross.csv`) | `data/MXWO/` (+ `mp_target_gross.csv`, `mp_multiplier.csv`, `bm_returns.csv`, `bmwgt.parquet`, `country_map.parquet`) |
 | 정본 실측 (배포 기준) | net Sharpe 0.703 / MDD -4.87% (미스케일, 거래세 미반영) | Sharpe 0.734 / MDD -1.80% / TE 1.04% (롱숏 ±20%, 거래세 반영) |
 
 공통 항목(style_cap 0.25, spread 0.05, ERC 모드, ts_mom_window 3, deploy_step 1.0 등)은 `config.py`의 `_COMMON_PARAMS`,
@@ -113,8 +113,8 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
      ├─ Undefined 섹터 제거       │                       │
      ├─ categorical 변환          │                       │
      ▼                           ▼                       │
- {benchmark}_factor_YYYY.parquet (연도별, zstd)            │
- {benchmark}_mreturn.parquet  (단일, zstd)               │
+ data/{benchmark}/factor_YYYY.parquet (연도별, zstd)       │
+ data/{benchmark}/mreturn.parquet  (단일, zstd)          │
      │                           │                       │
      │    mp 커맨드 시작 ──────────┘                       │
      │         │                                         │
@@ -176,7 +176,7 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
 
 | 경로 | 조건 | 특징 |
 |------|------|------|
-| **연도별 분할** | `{benchmark}_factor_YYYY.parquet` 파일 존재 | **최적 경로.** `load_factor_parquet()`이 자동 병합. merge 불필요, categorical→object 변환만 수행. `validate=True`로 10가지 무결성 검증 (시간순 정렬 `UNSORTED_LAG_GROUPS` 포함 — lag `shift(1)` 전제 보호) |
+| **연도별 분할** | `data/{benchmark}/factor_YYYY.parquet` 파일 존재 | **최적 경로.** `load_factor_parquet()`이 자동 병합. merge 불필요, categorical→object 변환만 수행. `validate=True`로 10가지 무결성 검증 (시간순 정렬 `UNSORTED_LAG_GROUPS` 포함 — lag `shift(1)` 전제 보호) |
 | 단일 파일 (fallback) | 분할 파일 없고 `{benchmark}_factor.parquet` 존재 | 레거시 호환. 동일 `load_factor_parquet()` 함수가 자동 fallback |
 | Legacy raw | 위 둘 다 없고 `{benchmark}_{start}_{end}.parquet` 존재 | raw parquet에서 M_RETURN 분리 필요 |
 | Test | `test_file` 인자 전달 시 | CSV 로드, `fld` 컬럼에서 regex로 factorAbbreviation 파싱 |
@@ -415,7 +415,7 @@ agg_w["style"] = "CEW"
 SQL Server -> `_build_pipeline_ready()` (M_RETURN 분리, factor_info merge, categorical 변환) -> 연도별 분할 parquet (zstd). 상세 CLI 사용법은 [`README.md`](README.md) 참조.
 
 **두 가지 모드:**
-- **전체 모드** (기본): 기존 parquet을 `data_backup/`에 이동 후 전체 재다운로드
+- **전체 모드** (기본): 기존 parquet을 덮어쓰며 전체 재다운로드 (구 `data_backup/` 스냅샷은 2026-09-09 폐지 — data/ 가 git 추적이라 history 가 백업)
 - **증분 모드** (`--incremental`): `end_date` 월만 다운로드, 해당 연도 파일만 갱신 (~20MB I/O). 과거 월 backfill(기존 최신 월보다 이전 월 재다운로드) 시에는 `(factorAbbreviation, ddt)` 로 재정렬해 저장 — append 순서가 깨지면 5분위 분석의 lag(`shift(1)`)가 조용히 오염되기 때문 (로드 시 `UNSORTED_LAG_GROUPS` 검증으로도 방어)
 
 **저장 후 검증** (`download_validation.validate_parquet_coverage`): 빈 월, 팩터/종목 수 급감, M_RETURN 정합성 등 5가지
@@ -458,8 +458,8 @@ main.py
 | `.env` 파일 | DB 비밀번호, 서버 주소, 계정명 등 | `USER_PWD`, `SERVER_NAME`, `USER_NAME` 미설정 시 각각 warning 로그 + DB 연결 실패 |
 | `factor_info.csv` | 팩터 메타데이터 (200+ 팩터) | merge 실패 → 분석 불가 |
 | `data/hardcoded_weights.csv` | 프로덕션 고정 가중치 (10개 팩터) | hardcoded 모드 실패 |
-| `data/{benchmark}_factor_YYYY.parquet` | 연도별 분할 팩터 데이터 (Git 추적) | mp 커맨드 실패 (download 선행 필요). `load_factor_parquet()`이 단일 파일 fallback 지원 |
-| `data/{benchmark}_mreturn.parquet` | 시장 수익률 (Git 추적) | mp 커맨드 실패 |
+| `data/{benchmark}/factor_YYYY.parquet` | 연도별 분할 팩터 데이터 (Git 추적) | mp 커맨드 실패 (download 선행 필요). `load_factor_parquet()`이 단일 파일 fallback 지원 |
+| `data/{benchmark}/mreturn.parquet` | 시장 수익률 (Git 추적) | mp 커맨드 실패 |
 
 ### 3.4 영향 범위 (Blast Radius)
 
@@ -569,7 +569,7 @@ weight_raw["factor_weight"] = weight_raw["factor_weight"] * (weight_raw["mp_ls_w
 증분 모드로 새 월을 추가할 때, 기존 월에 없던 새 팩터가 등장하거나 기존 팩터가 누락될 수 있음. `download_validation.validate_parquet_coverage`의 `FACTOR_MISSING_LATEST` 경고로 감지하지만 자동 수정은 없음.
 
 #### 4.3.6a 연도 경계 증분 다운로드
-`end_date=2027-01-31` 증분 다운로드 시 `affected_year=2027`이므로 `{benchmark}_factor_2027.parquet` 파일이 자동 생성된다. 기존 2026 파일은 변경되지 않음.
+`end_date=2027-01-31` 증분 다운로드 시 `affected_year=2027`이므로 `data/{benchmark}/factor_2027.parquet` 파일이 자동 생성된다. 기존 2026 파일은 변경되지 않음.
 
 #### 4.3.7 M_RETURN merge 시 행 손실
 `inner join`이므로 M_RETURN에 없는 종목-날짜는 삭제됨. 이는 의도된 동작이지만, M_RETURN parquet에 데이터 누락이 있으면 분석 대상 종목이 줄어듦.
@@ -794,7 +794,7 @@ Top-50이 아닌, **실제로 비중이 할당된 최종 팩터**에만 적용.
 
 **style_map 출처**: `model_portfolio.py` 가 `data/factor_info.csv` 전체 (587 factor) 를 사용해 dict 구성. `self.meta` (38 kept factor) 를 안 쓰는 이유는 prev 에만 있는 factor (이번 회차 탈락) 도 매핑해야 하기 때문.
 
-**test_file 모드 정책**: `python main.py mp test test_data.csv` 실행 시 history 디렉토리에 어떤 파일도 저장하지 않음 (test 데이터로 prev history 오염 방지).
+**test_file 모드 정책**: `python main.py mp test tests/fixtures/test_data.csv` 실행 시 history 디렉토리에 어떤 파일도 저장하지 않음 (test 데이터로 prev history 오염 방지).
 
 ### 6.6 CLI 커맨드
 
@@ -822,7 +822,7 @@ python main.py backtest <start> <end> [옵션]
   - ⚠ **월별 목표 고정은 상수배가 아니다**: netting 이 심한 달을 키우고 덜한 달을 줄이므로 수익 경로가 바뀐다 -> Sharpe 도 이동(0.739 -> 0.734). 고정 배수였다면 불변. 테스트로 이 구분을 고정(`test_stock_level.py`).
   - **TE**: 시장중립 오버레이 -> 액티브수익=오버레이수익 -> `TE = 월 net_return std x sqrt(12)`. 벤치마크 비중 데이터 불필요 (파케이에 `MXWO_WGT` 없음). 실현(ex-post) 기준.
 - **MP 배포 배수** (2026-08-19): 최종 MP 북(=AGG/style"MP" 행, 종목 netting 후)은 롱/숏이 정확히 대칭(순노출 ~1e-15)이나 절대 gross 가 시점마다 다르다 — 팩터 비중 합 1.0 이 롱·숏 양쪽에 각각 전개돼 netting 전 gross 2.0, 종목 상쇄로 56.9% 흡수되어 0.862(2026-06)/0.898(2025-06) 잔존. `mp_target_gross`(기본 0.40) 설정 시 `multiplier_for_target()` 이 `target/gross` 배수를 산출해 노출을 고정한다 (롱 +20%/숏 -20%). 적용 대상은 `mp_ls_weight`/`ls_weight`/`style_ls_weight` 뿐 — `factor_weight` 는 피벗 컬럼 키이자 팩터 배분(합=1)이라 스케일 금지. style 집계·피벗 **이전**에 적용해 세 산출물이 동일 배수를 반영. 기록은 `mp_weight_history/deploy_multiplier_*.csv`. 수동 모드는 `data/mp_multiplier.csv`(effective_date, multiplier — 다음 변경 전까지 유효한 계단식). 배포 스케일링이므로 walk-forward/mp_level 성과 회계에는 영향 없음
-- **산출물 파일명 기준일** (2026-08-19): 모든 생성물 이름에 데이터 기준일이 붙는다 — `walk_forward_results_{YYYY-MM-DD}.csv`, `walk_forward_weight_history_*`, `overfit_diagnostics_*`, `factor_returns_matrix_*`, `meta_data_*`, `별첨0N_{BM}_{Name}_*`. 기준일 출처는 CLI 인자가 아니라 **실제 산출 데이터의 마지막 월** (백테스트 CLI 날짜는 엔진이 무시하므로). 헬퍼는 `service/paths.py`: 쓸 때 `dated(path, as_of)`, 읽을 때 `latest(path)` (가장 최근 기준일본 선택, 없으면 구 무날짜 경로 폴백). `latest()` 글롭은 날짜 패턴으로 한정 — `meta_data_test_test_data.csv` 같은 동일 stem 파생 파일 혼입 방지. 별첨 커버 우하단도 생성일이 아니라 기준일(`AS OF 30 JUN 2026`) 표기. 부수 교정: mp_level parity 기본 비교 경로가 루트 `output/` 고정이던 오류를 `OUTPUT_DIR` 최신본으로 수정 (MXWO 오표기 해소)
+- **산출물 파일명 기준일** (2026-08-19): 모든 생성물 이름에 데이터 기준일이 붙는다 — `walk_forward_results_{YYYY-MM-DD}.csv`, `walk_forward_weight_history_*`, `overfit_diagnostics_*`, `factor_returns_matrix_*`, `meta_data_*`, `별첨0N_{BM}_{Name}_*`. 기준일 출처는 CLI 인자가 아니라 **실제 산출 데이터의 마지막 월** (백테스트 CLI 날짜는 엔진이 무시하므로). 헬퍼는 `service/paths.py`: 쓸 때 `dated(path, as_of)`, 읽을 때 `latest(path)` (가장 최근 기준일본 선택, 없으면 구 무날짜 경로 폴백). **2026-09-09 기준일 폴더**: `dated()` 는 `output/{BM}/{YYYY-MM-DD}/{stem}_{date}{ext}` 로 쓰고(폴더 생성 포함), `latest()` 는 기준일 폴더만 글롭한다; mp test 산출물은 `output/{BM}/test/`, 회차 간 이력은 `mp_weight_history/`(불변), 실험은 `experiments/`(불변). `latest()` 글롭은 날짜 패턴으로 한정 — `meta_data_test_test_data.csv` 같은 동일 stem 파생 파일 혼입 방지. 별첨 커버 우하단도 생성일이 아니라 기준일(`AS OF 30 JUN 2026`) 표기. 부수 교정: mp_level parity 기본 비교 경로가 루트 `output/` 고정이던 오류를 `OUTPUT_DIR` 최신본으로 수정 (MXWO 오표기 해소)
 - **성과 원천(팩터 기여도) 상설화** (2026-08-28): `_assemble_oos_record` 가 매 OOS 월 `contributions = {f: 비중 x 당월수익}` (합 = oos_return) 을 기록하고, stitcher 가 `contribution_history` 로 직렬화 → `factor_contrib_{기준일}.csv` (weight_history 와 동일 결정적 포맷). 대시보드 '연도별 성과 원천' 섹션: 연도x스타일 히트맵(`contrib_style_heatmap_fig`) + 연도별 상/하위 기여 팩터 표. **핵심 함정: 사후 재구성 금지** — 저장된 `factor_returns_matrix`(최종 윈도우 규칙) x 비중이력 근사는 look-ahead 로 왜곡됨 (corr 0.676, 2025년 기여 2배 과대 실측). 반드시 엔진이 당시 규칙으로 기록한 값 사용. 팩터단(배포 배수 전) 기준.
 - **별첨 북 = 운용 규칙 기준** (2026-08-27): `mp --report` 가 48M 롤링 IS 창으로 운용 규칙(섹터 제거·L/S 라벨)을 별도 fit 해 `live_rules` 번들로 `generate_report()` 에 전달하고, 북은 그 규칙을 **전체 이력 5분위 통계에 직접 매핑**해 차트를 그린다 (재학습 금지 — walk-forward `_apply_rules_and_aggregate` 와 동일 원칙). 결과: 별첨 팩터 집합 = 운용 유효 팩터 집합 (구 방식은 전체 이력으로 재-fit 한 통과 집합 ∩ meta_data 교집합만 실려, LogMktCap 등 운용 유효 팩터 3개가 북에서 빠지는 불일치 존재). 차트의 수익 측정 기간만 전체 이력(참고용)이고 규칙·정렬(③ L-S CAGR)은 모두 운용 48M. 별첨01 Factor_Info 시트도 북과 동일 집합으로 필터 — **별첨 4종 = 271개·동일 순서 통일** (운용 273 중 stdRR36M·PM1M 은 전 기간 커버리지<10% 로 별첨 전체 미수록). `live_rules=None` 이면 구 방식 폴백. 부수 교정: 구 방식은 `filter_and_label_factors` 를 기본 인자(threshold 0.10, tstat None)로 호출해 운용 파라미터(0.05 등)와도 어긋났었음
 - `COUNTRY_TAX_BPS` (국가별 증권거래세, 2026-08-12 도입): 수수료 10bp 와 **별도**로 법정 거래세를 매수/매도 방향별 부과. GBR 50/0, IRL 100/0, FRA 40/0, ESP 20/0, ITA 20/0, HKG 10/10, ZAF 25/0, USA 0/0.206 (bp), 그 외 면세. 적용 지점은 `mp_level_cost_backtest` **실측 전용** — factor-level 선정 입력에는 미반영 (선정 규칙 불변, 성과 회계만 정직화). 구현: `service/pipeline/transaction_tax.py`. 핵심은 턴오버의 **부호 있는 델타 보존** (Δw>0=매수/숏커버, Δw<0=매도/숏진입) — 영국 SDRT 같은 매수 편측 세목이 공매도 진입엔 안 붙고 커버에만 붙는 구조가 자동 처리됨. `cost_stock`(수수료)/`tax_stock`(세금) 분리 계상으로 netting ratio 진단 유지. 영향: net 0.840→0.739 (연 세금 23.5bp, 편도 6.19bp)
@@ -847,9 +847,9 @@ python main.py backtest <start> <end> [옵션]
   Bartlett kernel, lag=3 기본. `meta_data.csv`의 `newey_west_tstat` 컬럼으로만 노출, 랭킹 교체 X.
 
 **산출 파일:**
-- `output/{BENCHMARK}/walk_forward_results.csv` -- OOS 월별 Constrained EW / EW / EW_All / EW_Top50 수익률 + 누적 수익률 (컬럼 prefix `cew_*`)
-- `output/{BENCHMARK}/overfit_diagnostics.csv` -- 과적합 진단 5개 지표 요약
-- `output/{BENCHMARK}/walk_forward_weight_history.csv` -- 월별 팩터 가중치 이력 (date x factor; viz 비중 추이/회전율용)
+- `output/{BENCHMARK}/<date>/walk_forward_results_<date>.csv` -- OOS 월별 Constrained EW / EW / EW_All / EW_Top50 수익률 + 누적 수익률 (컬럼 prefix `cew_*`)
+- `output/{BENCHMARK}/<date>/overfit_diagnostics_<date>.csv` -- 과적합 진단 5개 지표 요약
+- `output/{BENCHMARK}/<date>/walk_forward_weight_history_<date>.csv` -- 월별 팩터 가중치 이력 (date x factor; viz 비중 추이/회전율용)
 - `docs/backtest_results_2009_2026.md` -- 136개월 OOS 분석 보고서
 
 **재현성 (결정적 출력, 2026-06-24):** 위 두 CSV(`walk_forward_results.csv`,
@@ -876,7 +876,7 @@ python main.py backtest <start> <end> [옵션]
 ## 7. 시각화 대시보드 레이어 (viz)
 
 백테스트와 현재 포트를 단일 인터랙티브 HTML로 보여주는 **read-only** 레이어.
-기존 `output/{BENCHMARK}/*.csv`만 소비하고 파이프라인 코드/출력 스키마를 일절 수정하지 않으므로,
+기존 `output/{BENCHMARK}/<date>/*.csv`만 소비하고 파이프라인 코드/출력 스키마를 일절 수정하지 않으므로,
 CLAUDE.md 의 코드 변경 검증 절차(aggregated_weights before/after diff)를 발동시키지 않는다.
 
 ### 7.1 모듈 구조 (관심사 분리)
@@ -909,7 +909,7 @@ KPI 카드(CAGR/MDD/Sharpe/Calmar/승률/초과CAGR)는 `build_kpis()`에서 **�
 
 ### 7.4 출력 / 제약
 
-- `output/{BENCHMARK}/dashboard_<date>.html`, plotly.js **인라인** 임베드 -> 오프라인 단독 열림(약 4.7MB).
+- `output/{BENCHMARK}/<date>/dashboard_<date>.html`, plotly.js **인라인** 임베드 -> 오프라인 단독 열림(약 4.7MB).
 - 백테스트 섹션 하단 "과적합 진단 상세" 표 = `overfit_diagnostics.csv` 전체를 순서대로 렌더(컬럼: 분류/지표/EW/Top50/CEW/해석). 단일값 행은 3열 colspan, Interpretation 의 `<`/`>`(예: 'A < B < C')는 escape. `parse_diagnostics()`는 KPI용이라 Interpretation/행순서를 버리므로 표는 CSV를 직접 읽는다.
 - **OOS 성과는 곡선에서 계산해 이 표에 통합**: `_oos_rows()`/`compute_series_perf()`가 walk_forward_results.csv 곡선에서 EW_All/EW_Top50/CEW 의 CAGR/MDD/Sharpe/Calmar 를 산출해 단일 "OOS 성과 (EW/Top50/CEW)" 블록으로 삽입(CSV/백테스트 스키마 무수정; 곡선 계산 = 진단값 §7.3; CSV 엔 없는 EW_All/Top50 의 Sharpe/Calmar 까지 메움). **중복 방지**: funnel 이 이미 OOS CAGR/MDD 를 EW/Top50/CEW 로 보여주므로, 통합 시 funnel 의 EW_All/EW_Top50/Constrained EW 변형행과 CSV OOS 섹션(CEW·선정EW)은 숨기고 funnel 패턴 판정 행만 남긴다. 곡선이 없으면(test 모드) funnel 변형행을 그대로 3열 피벗하는 폴백.
 - **낙폭 구간 분석**: `compute_drawdown_episodes(cum, min_depth=0.01)`(dashboard_data)가 곡선에서 underwater episode(고점->저점->회복)를 추출 — 깊이(%) + peak/trough/recovery 시점 + 하락(peak->trough)·회복(trough->recovery)·전체 기간(개월), 미회복 시 ONGOING. `_drawdown_episodes_section()`이 EW_All/EW_Top50/CEW 곡선별 표(깊은 순, 1% 이상)로 렌더. 정적 산출물 `docs/experiments/drawdown_analysis.md`(특정 설정/기간)와 달리 **현재 OOS 곡선에서 실시간 계산**이라 숫자는 다름.
@@ -919,7 +919,7 @@ KPI 카드(CAGR/MDD/Sharpe/Calmar/승률/초과CAGR)는 `build_kpis()`에서 **�
 ### 7.5 섹터 분해 (read-only parquet join)
 
 `total_aggregated_weights_*.csv`에는 `sec` 컬럼이 없다. `load_sector_map()`이 소스
-`data/{benchmark}_factor_<연도>.parquet`을 `load_factor_parquet()`로 읽어(스냅샷 연도만),
+`data/{benchmark}/factor_<연도>.parquet`을 `load_factor_parquet()`로 읽어(스냅샷 연도만),
 해당 `ddt` 행에서 `gvkeyiid -> sec` 매핑을 만들고, `sector_net_weights()`가 종목 순비중
 (`mp_ls_weight`)을 섹터로 묶는다. 파이프라인/출력 스키마는 건드리지 않는다(read-only).
 parquet 없거나 날짜 불일치 시 빈 dict -> 섹터 차트 자동 생략. 매핑 없는 종목은 'Unknown' 버킷.

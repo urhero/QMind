@@ -212,7 +212,7 @@ def calculate_style_weights(
 
 # MP 배포 배수 (2026-08-19 도입): 최종 MP 북을 실제 포트폴리오에 적용할 때 곱하는
 # 배수를 산출물에 미리 반영한다 (Bloomberg ex-ante TE 확인을 배수 적용 상태로 하기 위함).
-# data/{BENCHMARK}_mp_multiplier.csv 는 (effective_date, multiplier) 이력 — 해당 시점 이후 다음
+# data/{BENCHMARK}/mp_multiplier.csv 는 (effective_date, multiplier) 이력 — 해당 시점 이후 다음
 # 변경 전까지 유효한 계단식 값. 파일/해당 행이 없으면 1.0 (미적용).
 MULTIPLIER_COLS = ("mp_ls_weight", "ls_weight", "style_ls_weight")
 
@@ -233,7 +233,7 @@ def multiplier_for_target(book_gross: float, target_gross: float) -> float:
 def resolve_target_gross(as_of, path, default: float | None) -> float | None:
     """기준일에 유효한 목표 총 gross = effective_date <= as_of 중 가장 최근 값.
 
-    data/{BENCHMARK}_mp_target_gross.csv 는 (effective_date, target_gross) 계단식 이력 —
+    data/{BENCHMARK}/mp_target_gross.csv 는 (effective_date, target_gross) 계단식 이력 —
     운용 중 노출 규모를 바꿔도 과거 시점 재현이 그때의 규모로 정확히 나온다.
     파일/해당 행이 없으면 config 기본값으로 폴백.
     """

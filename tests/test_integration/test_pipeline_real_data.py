@@ -2,7 +2,7 @@
 """
 실제 parquet 데이터를 사용한 파이프라인 통합 테스트.
 
-연도별 분할 parquet (data/MXCN1A_factor_{YYYY}.parquet + MXCN1A_mreturn.parquet)
+연도별 분할 parquet (data/MXCN1A/factor_{YYYY}.parquet + mreturn.parquet)
 로 전체 파이프라인을 실행하고 출력 품질을 검증한다. 날짜 범위는
 ModelPortfolioPipeline._load_data 가 parquet 에서 스스로 도출하므로
 파일명 파싱이 필요 없다.
@@ -36,13 +36,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # 경로 설정
 # ═══════════════════════════════════════════════════════════════════════════════
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = PROJECT_ROOT / "data" / "MXCN1A"  # 유니버스 폴더
 from service.paths import OUTPUT_DIR  # output/{BENCHMARK}/
-FACTOR_INFO_PATH = PROJECT_ROOT / "factor_info.csv"
+FACTOR_INFO_PATH = PROJECT_ROOT / "data" / "factor_info.csv"
 
-# 연도별 분할 parquet 탐색 (파일명 = MXCN1A_factor_{YYYY}.parquet, 연도순 정렬)
-FACTOR_PARQUET_FILES = sorted(DATA_DIR.glob("MXCN1A_factor_*.parquet"))
-MRETURN_PARQUET = DATA_DIR / "MXCN1A_mreturn.parquet"
+# 연도별 분할 parquet 탐색 (파일명 = factor_{YYYY}.parquet, 연도순 정렬)
+FACTOR_PARQUET_FILES = sorted(DATA_DIR.glob("factor_*.parquet"))
+MRETURN_PARQUET = DATA_DIR / "mreturn.parquet"
 HAS_REAL_DATA = bool(FACTOR_PARQUET_FILES) and MRETURN_PARQUET.exists()
 LATEST_PARQUET = FACTOR_PARQUET_FILES[-1] if FACTOR_PARQUET_FILES else None  # 최신 연도 파일
 
@@ -69,7 +69,7 @@ def pipeline_result():
 
     pipeline = ModelPortfolioPipeline(
         config=PARAM,
-        factor_info_path=DATA_DIR / "factor_info.csv",
+        factor_info_path=FACTOR_INFO_PATH,
         is_test=False,
     )
 

@@ -12,14 +12,13 @@ from pathlib import Path
 import pandas as pd
 
 from service.download.parquet_io import load_factor_parquet, month_gap_issues
-from service.paths import mreturn_filename
+from service.paths import MRETURN_FILE
 
 logger = logging.getLogger(__name__)
 
 
 def validate_parquet_coverage(
     data_dir: Path,
-    benchmark: str,
     mreturn_path: Path | None = None,
     *,
     gap_threshold_days: int = 35,
@@ -37,8 +36,7 @@ def validate_parquet_coverage(
       4. M_RETURN 정합성: factor와 mreturn의 월 불일치
 
     Args:
-        data_dir: parquet 디렉토리
-        benchmark: 벤치마크명
+        data_dir: parquet 디렉토리 (data/{BENCHMARK}/)
         mreturn_path: mreturn parquet 경로 (None이면 data_dir에서 추론)
         gap_threshold_days: 빈 월 판단 기준 일수 (기본 35)
         factor_drop_pct: 팩터 수 급감 판단 기준 (기본 10%)
@@ -51,10 +49,10 @@ def validate_parquet_coverage(
         - mret_df: 로드된 M_RETURN DataFrame (재사용 가능)
     """
     if mreturn_path is None:
-        mreturn_path = Path(data_dir) / mreturn_filename(benchmark)
+        mreturn_path = Path(data_dir) / MRETURN_FILE
 
     factor_df = load_factor_parquet(
-        data_dir, benchmark, columns=["ddt", "factorAbbreviation", "gvkeyiid", "val"]
+        data_dir, columns=["ddt", "factorAbbreviation", "gvkeyiid", "val"]
     )
     mret_df = pd.read_parquet(mreturn_path, columns=["ddt", "gvkeyiid"])
 

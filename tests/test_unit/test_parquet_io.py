@@ -67,16 +67,16 @@ class TestSaveFactorParquetByYear:
 
     def test_creates_correct_files(self, sample_factor_df, tmp_path):
         """연도별 파일이 올바르게 생성되는지 확인."""
-        saved = save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
+        saved = save_factor_parquet_by_year(sample_factor_df, tmp_path)
         assert len(saved) == 3  # 2023, 2024, 2025
-        expected_names = {"TEST_factor_2023.parquet", "TEST_factor_2024.parquet", "TEST_factor_2025.parquet"}
+        expected_names = {"factor_2023.parquet", "factor_2024.parquet", "factor_2025.parquet"}
         actual_names = {p.name for p in saved}
         assert actual_names == expected_names
 
     def test_roundtrip_preserves_data(self, sample_factor_df, tmp_path):
         """저장 후 로드하면 동일한 데이터가 반환되는지 확인."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
-        loaded = load_factor_parquet(tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
+        loaded = load_factor_parquet(tmp_path)
 
         # 행 수 동일
         assert len(loaded) == len(sample_factor_df)
@@ -93,10 +93,10 @@ class TestSaveFactorParquetByYear:
     def test_save_with_years_filter(self, sample_factor_df, tmp_path):
         """특정 연도만 저장."""
         saved = save_factor_parquet_by_year(
-            sample_factor_df, tmp_path, "TEST", years={2024}
+            sample_factor_df, tmp_path, years={2024}
         )
         assert len(saved) == 1
-        assert saved[0].name == "TEST_factor_2024.parquet"
+        assert saved[0].name == "factor_2024.parquet"
 
         # 2024 데이터만 있는지 확인
         loaded = pd.read_parquet(saved[0])
@@ -105,31 +105,31 @@ class TestSaveFactorParquetByYear:
 
     def test_row_counts_per_year(self, sample_factor_df, tmp_path):
         """각 연도 파일의 행 수가 올바른지 확인."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
 
         # 2023: 3개월 × 5종목 × 3팩터 = 45
-        df_2023 = pd.read_parquet(tmp_path / "TEST_factor_2023.parquet")
+        df_2023 = pd.read_parquet(tmp_path / "factor_2023.parquet")
         assert len(df_2023) == 45
 
         # 2024: 12개월 × 5종목 × 3팩터 = 180
-        df_2024 = pd.read_parquet(tmp_path / "TEST_factor_2024.parquet")
+        df_2024 = pd.read_parquet(tmp_path / "factor_2024.parquet")
         assert len(df_2024) == 180
 
         # 2025: 2개월 × 5종목 × 3팩터 = 30
-        df_2025 = pd.read_parquet(tmp_path / "TEST_factor_2025.parquet")
+        df_2025 = pd.read_parquet(tmp_path / "factor_2025.parquet")
         assert len(df_2025) == 30
 
     def test_no_year_column_in_output(self, sample_factor_df, tmp_path):
         """출력 parquet에 임시 _year 컬럼이 포함되지 않는지 확인."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
-        loaded = pd.read_parquet(tmp_path / "TEST_factor_2023.parquet")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
+        loaded = pd.read_parquet(tmp_path / "factor_2023.parquet")
         assert "_year" not in loaded.columns
 
     def test_input_df_not_mutated(self, sample_factor_df, tmp_path):
         """copy 회피 후에도 입력 df 는 변형되지 않아야 한다 (no _year, 컬럼/길이 불변)."""
         before_cols = list(sample_factor_df.columns)
         before_len = len(sample_factor_df)
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
         assert list(sample_factor_df.columns) == before_cols
         assert "_year" not in sample_factor_df.columns
         assert len(sample_factor_df) == before_len
@@ -140,41 +140,41 @@ class TestLoadFactorParquet:
 
     def test_load_split_files(self, sample_factor_df, tmp_path):
         """분할 파일 로드."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
-        result = load_factor_parquet(tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
+        result = load_factor_parquet(tmp_path)
         assert len(result) == len(sample_factor_df)
 
     def test_load_with_year_range(self, sample_factor_df, tmp_path):
         """start_year/end_year 필터링."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
-        result = load_factor_parquet(tmp_path, "TEST", start_year=2024, end_year=2024)
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
+        result = load_factor_parquet(tmp_path, start_year=2024, end_year=2024)
         years = pd.to_datetime(result["ddt"]).dt.year.unique()
         assert list(years) == [2024]
 
     def test_load_not_found(self, tmp_path):
         """파일 없으면 FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
-            load_factor_parquet(tmp_path, "NONEXISTENT")
+            load_factor_parquet(tmp_path)
 
     def test_load_empty_year_range(self, sample_factor_df, tmp_path):
         """범위에 해당하는 파일이 없으면 FileNotFoundError."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
         with pytest.raises(FileNotFoundError):
-            load_factor_parquet(tmp_path, "TEST", start_year=2030, end_year=2030)
+            load_factor_parquet(tmp_path, start_year=2030, end_year=2030)
 
     def test_load_with_validate(self, sample_factor_df, tmp_path):
         """validate=True로 로드 시 정상 데이터는 통과."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
         # min_factors_per_month=3, min_stocks_per_month=5 충족하므로 통과해야 함
-        result = load_factor_parquet(tmp_path, "TEST", validate=True)
+        result = load_factor_parquet(tmp_path, validate=True)
         assert len(result) == len(sample_factor_df)
 
     def test_load_columns_pushdown_split(self, sample_factor_df, tmp_path):
         """columns= 지정 시 해당 컬럼만 지정 순서로 반환, 값은 full load 와 동일 (분할 파일)."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
         cols = ["ddt", "factorAbbreviation", "gvkeyiid", "val"]
-        full = load_factor_parquet(tmp_path, "TEST")
-        subset = load_factor_parquet(tmp_path, "TEST", columns=cols)
+        full = load_factor_parquet(tmp_path)
+        subset = load_factor_parquet(tmp_path, columns=cols)
         assert list(subset.columns) == cols
         pd.testing.assert_frame_equal(
             subset.reset_index(drop=True), full[cols].reset_index(drop=True),
@@ -186,21 +186,21 @@ class TestListYearlyParquets:
 
     def test_returns_sorted_list(self, sample_factor_df, tmp_path):
         """정렬된 파일 리스트 반환."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
-        files = list_yearly_parquets(tmp_path, "TEST")
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
+        files = list_yearly_parquets(tmp_path)
         assert len(files) == 3
         assert files[0].name < files[1].name < files[2].name
 
     def test_empty_directory(self, tmp_path):
         """빈 디렉토리면 빈 리스트."""
-        assert list_yearly_parquets(tmp_path, "TEST") == []
+        assert list_yearly_parquets(tmp_path) == []
 
     def test_ignores_non_matching_files(self, sample_factor_df, tmp_path):
         """이름이 안 맞는 파일은 무시."""
-        save_factor_parquet_by_year(sample_factor_df, tmp_path, "TEST")
-        # 다른 벤치마크 파일 생성
+        save_factor_parquet_by_year(sample_factor_df, tmp_path)
+        # 접두사 붙은(구 명명) 파일은 무시
         (tmp_path / "OTHER_factor_2023.parquet").write_bytes(b"dummy")
-        files = list_yearly_parquets(tmp_path, "TEST")
+        files = list_yearly_parquets(tmp_path)
         assert len(files) == 3  # TEST 파일만
 
 
@@ -353,8 +353,8 @@ class TestValidateLoadedFactorData:
         """validate=True + ERROR → RuntimeError."""
         # 필수 컬럼 누락 데이터
         bad_df = pd.DataFrame({"ddt": pd.to_datetime(["2023-01-31"]), "val": [1.0]})
-        bad_path = tmp_path / "TEST_factor_2023.parquet"
+        bad_path = tmp_path / "factor_2023.parquet"
         bad_df.to_parquet(bad_path, index=False)
 
         with pytest.raises(RuntimeError, match="error"):
-            load_factor_parquet(tmp_path, "TEST", validate=True)
+            load_factor_parquet(tmp_path, validate=True)

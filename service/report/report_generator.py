@@ -25,7 +25,7 @@ from matplotlib.patches import Ellipse, Rectangle
 
 from config import PARAM, PIPELINE_PARAMS
 from service.factor.factor_returns import aggregate_factor_returns
-from service.paths import HISTORY_DIR, OUTPUT_DIR, latest
+from service.paths import HISTORY_DIR, OUTPUT_DIR, dated_dir, latest
 from service.pipeline.factor_analysis import filter_and_label_factors
 from service.report.style_colors import STYLE_COLORS, _DEFAULT_COLOR
 
@@ -511,7 +511,8 @@ def generate_report(factor_abbrs, factor_names, style_names, factor_stats,
     logger.info("별첨 기준일: %s", as_of)
 
     # ── 별첨01 xlsx ──
-    xlsx_path = OUTPUT_DIR / f"별첨01_{_BM}_Factor_Return_Info_{as_of}.xlsx"
+    out = dated_dir(OUTPUT_DIR, as_of)  # 별첨 4종은 기준일 폴더 output/{BM}/{as_of}/
+    xlsx_path = out / f"별첨01_{_BM}_Factor_Return_Info_{as_of}.xlsx"
     info_df = meta_df[["factorAbbreviation", "factorName", "styleName", "cagr"]].copy()
     # 별첨 4종 팩터 집합 통일 (2026-08-27 사용자 지정): Factor_Info 도 북(02~04)과
     # 동일한 집합만 수록 — 북 수록 조건(라벨 규칙 존재 & 전 기간 수익 시계열 유효)과
@@ -697,7 +698,7 @@ def generate_report(factor_abbrs, factor_names, style_names, factor_stats,
             _swatch(fig, x - 42 - (4 - i) * 12, 41.5, 9, 9, RAMP[i])
 
     _render_stacked_book(
-        OUTPUT_DIR / f"별첨02_{_BM}_Sector_Quintile_Return_Book_{as_of}.pdf", records,
+        out / f"별첨02_{_BM}_Sector_Quintile_Return_Book_{as_of}.pdf", records,
         f"{_BM} · Sector × Quintile Returns",
         "Appendix 02 — Sector Quintile Return Book", "Avg monthly return, %",
         cover02,
@@ -727,7 +728,7 @@ def generate_report(factor_abbrs, factor_names, style_names, factor_stats,
                         "tags are the live 48M rules; only the return",
                         "window differs from ③ (so signs can disagree)."]))
 
-    _render_grid_book03(OUTPUT_DIR / f"별첨03_{_BM}_Quintile_Return_Book_{as_of}.pdf",
+    _render_grid_book03(out / f"별첨03_{_BM}_Quintile_Return_Book_{as_of}.pdf",
                         records, cover03)
 
     # ── 별첨04 ──
@@ -756,7 +757,7 @@ def generate_report(factor_abbrs, factor_names, style_names, factor_stats,
                         "it can rise while the recent ③ is negative."]))
 
     _render_stacked_book(
-        OUTPUT_DIR / f"별첨04_{_BM}_LongShort_Port_Return_Book_{as_of}.pdf", records,
+        out / f"별첨04_{_BM}_LongShort_Port_Return_Book_{as_of}.pdf", records,
         f"{_BM} · Long–Short Cumulative Returns",
         "Appendix 04 — Long–Short Portfolio Return Book",
         f"Cumulative return, % · net of {cost_bps} bp cost",

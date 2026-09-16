@@ -34,7 +34,7 @@ from service.factor.selection import (
     cluster_winner_median_dedup,
     compute_rank_score,
 )
-from service.paths import DATA_DIR, OUTPUT_DIR, dated
+from service.paths import DATA_DIR, OUTPUT_DIR, UNIVERSE_DATA_DIR, dated
 from service.pipeline.factor_analysis import (
     ANALYZE_COLS,
     calculate_factor_stats_batch,
@@ -577,7 +577,7 @@ class WalkForwardEngine:
         if not test_file and stock_monthly:
             try:
                 # 목표 노출 일정(Active Risk 조정 이력) 반영 — 시점별로 다른 규모
-                _tg_path, _tg_def = DATA_DIR / f"{PARAM['benchmark']}_mp_target_gross.csv", pp.get("mp_target_gross")
+                _tg_path, _tg_def = UNIVERSE_DATA_DIR / "mp_target_gross.csv", pp.get("mp_target_gross")
                 series = build_stock_series(
                     stock_monthly, float(PIPELINE_PARAMS["transaction_cost_bps"]),
                     lambda d: resolve_target_gross(d, _tg_path, _tg_def),

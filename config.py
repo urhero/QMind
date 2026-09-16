@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # 활성(나머지 주석)으로 두면 되고, .env 에 BENCHMARK 가 없으면 아래 값이 쓰인다
 # (.env 없는 CI 가 이 경로를 탄다). 기본값은 2026-09-09 MXCN1A -> MXWO 로 전환.
 # 이 값 하나로 DB/universe 식별자, PIPELINE_PARAMS 유니버스별 값, output/{BENCHMARK}/,
-# data/{BENCHMARK}_* 데이터 파일이 전부 결정된다 (2026-09-02 통합).
+# data/{BENCHMARK}/ 데이터 파일이 전부 결정된다 (2026-09-02 통합).
 BENCHMARK = os.getenv("BENCHMARK") or "MXWO"
 
 UNIVERSES = {
@@ -68,7 +68,7 @@ _COMMON_PARAMS = {
     "optimization_mode": "erc",        # "erc"(상관 인지 ERC; MXWO 2026-07-29, MXCN1A 2026-08-05 채택) / "equal_risk_weight"(1/sigma) / "equal_weight"(1/N) / "hardcoded". 근거: docs/experiments/mxwo_sharpe_ladder_20260729.md, mxcn1a_component_ablation_20260805.md
     "deploy_step": 1.0,                # 부분 조정 배포 (1.0=전량 조정). MXWO: 20bp 시절 0.5 채택했으나 10bp 전환 후 역전 — 실측 step1.0 0.672 > 0.5 0.604 (2026-07-30)
     "ts_mom_window": 3,                # 팩터 TS 모멘텀 틸트: trailing N개월 자기수익 음수 팩터 비중 감쇠. MXWO 3 (2026-08-07 재검증: 독립 재실행 2회 연속 3M 피크 + 실측 net 0.721->0.761) / MXCN1A 3 (창 3~6 고원, 2026-08-05). None/0 = off
-    "bm_short_cap": False,             # 종목별 숏 비중 <= 그 종목의 BM 비중 (총 보유가 음수가 되지 않게). 배수 적용 후 최종 비중에 적용, 초과분은 잘라내고(재분배 없음) 롱은 숏 총액에 맞춰 비례 조정(중립 유지). BM 미편입 종목은 숏 불가. data/{benchmark}_bmwgt.parquet 필요. **2026-08-21 실측 기각 -> False**: 상한이 소형주 숏을 잘라내 숏 북이 대형주로 편중되는데, 2018-2026 대형-소형 스프레드가 +8.63%p/yr 라 대형주 숏은 구조적 역풍 -> Sharpe +0.715 -> -0.447 반전. 구현은 보존 (mxwo_sharpe_ladder_20260729.md 13차)
+    "bm_short_cap": False,             # 종목별 숏 비중 <= 그 종목의 BM 비중 (총 보유가 음수가 되지 않게). 배수 적용 후 최종 비중에 적용, 초과분은 잘라내고(재분배 없음) 롱은 숏 총액에 맞춰 비례 조정(중립 유지). BM 미편입 종목은 숏 불가. data/{benchmark}/bmwgt.parquet 필요. **2026-08-21 실측 기각 -> False**: 상한이 소형주 숏을 잘라내 숏 북이 대형주로 편중되는데, 2018-2026 대형-소형 스프레드가 +8.63%p/yr 라 대형주 숏은 구조적 역풍 -> Sharpe +0.715 -> -0.447 반전. 구현은 보존 (mxwo_sharpe_ladder_20260729.md 13차)
     "factor_ranking_method": "tstat",  # "shrunk_tstat" / "tstat"(현 기본) / "cagr" — mp+backtest 공통 선정 기준
     "n_clusters": 18,                  # 클러스터 수 (use_cluster_dedup=True일 때)
     "per_cluster_keep": 3,             # 클러스터당 유지 팩터 수
@@ -90,7 +90,7 @@ _UNIVERSE_PARAMS = {
         "weight_rebal_months": 3,      # Tier 2 가중 리밸 주기 (구 backtest CLI 기본값)
         "min_coverage_pct": 0.0,       # 커버리지 필터 미적용
         "sector_short_cap": None,      # 섹터 숏캡 미적용
-        "mp_target_gross": 0.14,       # MP 배포 목표 총 gross (롱 +7% / 숏 -7%). 2026-09-02 사용자 지정 (그 전엔 None=배수 1.0, 북 gross ~0.92 그대로). 시점별 이력은 data/MXCN1A_mp_target_gross.csv
+        "mp_target_gross": 0.14,       # MP 배포 목표 총 gross (롱 +7% / 숏 -7%). 2026-09-02 사용자 지정 (그 전엔 None=배수 1.0, 북 gross ~0.92 그대로). 시점별 이력은 data/MXCN1A/mp_target_gross.csv
     },
     # MSCI World. 2026-07~08 Sharpe 사다리 채택 스택 (docs/experiments/mxwo_sharpe_ladder_20260729.md).
     # 실측 net Sharpe 0.739 / MDD -4.80 (국가별 거래세 반영 후).
@@ -105,7 +105,7 @@ _UNIVERSE_PARAMS = {
         "weight_rebal_months": 1,      # 월간 가중 리밸 채택 (2026-07-29)
         "min_coverage_pct": 0.10,      # 팩터 최소 단면 커버리지 (유니버스 대비 유효 관측 비율, IS 기준). 은행 전용 등 초저커버리지 팩터 제외 (2026-07-27 A/B 채택)
         "sector_short_cap": 0.15,      # 섹터별 숏 gross 상한 (전체 숏 gross 대비, 2026-07-30 채택 — 2020-11형 숏 crowding 완화. 실측 스택 net 0.692/MDD -4.95/Calmar 0.352)
-        "mp_target_gross": 0.40,       # MP 배포 목표 총 gross (롱+|숏|). 설정 시 매 시점 배수를 자동 산출해 노출을 고정 (netting 변동 흡수). None 이면 data/{BENCHMARK}_mp_multiplier.csv 의 시점별 수동 배수 사용. 0.40 = 롱 +20% / 숏 -20% (2026-08-19 사용자 지정)
+        "mp_target_gross": 0.40,       # MP 배포 목표 총 gross (롱+|숏|). 설정 시 매 시점 배수를 자동 산출해 노출을 고정 (netting 변동 흡수). None 이면 data/{BENCHMARK}/mp_multiplier.csv 의 시점별 수동 배수 사용. 0.40 = 롱 +20% / 숏 -20% (2026-08-19 사용자 지정)
     },
 }
 

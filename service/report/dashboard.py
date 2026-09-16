@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from config import PARAM, PIPELINE_PARAMS
-from service.paths import latest
+from service.paths import dated, latest
 from service.report import dashboard_charts as ch
 from service.report import dashboard_data as dd
 from service.report.dashboard_charts import STRAT_LABEL
@@ -512,11 +512,11 @@ def _deployed_curves(curves: pd.DataFrame, series: pd.DataFrame) -> pd.DataFrame
 
 
 def _attach_benchmark(curves: pd.DataFrame) -> pd.DataFrame:
-    """BM 월수익(data/{BENCHMARK}_bm_returns.csv)을 붙이고 BM / BM+MP 오버레이 누적을 만든다 (2026-08-21).
+    """BM 월수익(data/{BENCHMARK}/bm_returns.csv)을 붙이고 BM / BM+MP 오버레이 누적을 만든다 (2026-08-21).
 
     MP 는 시장중립 오버레이이므로 실제 운용 수익 = BM + MP. 파일이 없으면 무동작.
     """
-    path = dd.DATA_DIR / f"{PARAM['benchmark']}_bm_returns.csv"
+    path = dd.UNIVERSE_DATA_DIR / "bm_returns.csv"
     if not path.exists() or "cew_return" not in curves.columns:
         return curves
     bm = pd.read_csv(path, parse_dates=["date"]).set_index("date")["bm_return"]
@@ -731,7 +731,7 @@ def _build_portfolio_section(output_dir: Path, end_date: str | None,
 
     # 섹터 분해: 소스 parquet 을 read-only 로 읽어 gvkeyiid 로 join (파이프라인 무수정)
     if snap != "?":
-        sector_map = dd.load_sector_map(data_dir, benchmark, snap)
+        sector_map = dd.load_sector_map(data_dir, snap)
         if sector_map:
             sec_series = dd.sector_net_weights(weights, sector_map)
             if not sec_series.empty:
@@ -1093,9 +1093,9 @@ def _factor_clusters_section(output_dir: Path, snap: str) -> tuple[str, str]:
 
 def build_dashboard(end_date: str | None = None, output_dir: Path | None = None,
                     data_dir: Path | None = None) -> Path:
-    """대시보드 HTML 을 생성해 output/dashboard_<date>.html 로 저장하고 경로 반환."""
+    """대시보드 HTML 을 생성해 output/{BM}/<date>/dashboard_<date>.html 로 저장하고 경로 반환."""
     output_dir = Path(output_dir) if output_dir else dd.OUTPUT_DIR
-    data_dir = Path(data_dir) if data_dir else dd.DATA_DIR
+    data_dir = Path(data_dir) if data_dir else dd.UNIVERSE_DATA_DIR
 
     bt_parts, bt_folded, js_in_bt = _build_backtest_section(output_dir, end_date)
     deploy_html = _deploy_section(output_dir, end_date)
@@ -1146,7 +1146,7 @@ def build_dashboard(end_date: str | None = None, output_dir: Path | None = None,
         f'<div class="wrap">{body}</div>{_RESIZE_SCRIPT}{_THEME_SCRIPT}</body></html>'
     )
 
-    out_path = output_dir / f"dashboard_{snap}.html"
+    out_path = dated(output_dir / "dashboard.html", snap)
     out_path.write_text(html, encoding="utf-8")
     logger.info("Dashboard saved to %s", out_path)
     return out_path

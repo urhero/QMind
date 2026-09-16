@@ -175,17 +175,22 @@ def test_top_longs_shorts_signs_and_dedup():
 # ── 파일 탐색 / 파싱 ───────────────────────────────────────────────────────
 
 def test_find_latest_weights_file_picks_max_date_excludes_style(tmp_path):
-    (tmp_path / "total_aggregated_weights_2025-01-31_test.csv").write_text("x")
-    (tmp_path / "total_aggregated_weights_2025-02-28_test.csv").write_text("x")
-    (tmp_path / "total_aggregated_weights_style_2025-03-31_test.csv").write_text("x")
+    for d in ("2025-01-31", "2025-02-28", "2025-03-31"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "2025-01-31" / "total_aggregated_weights_2025-01-31_test.csv").write_text("x")
+    (tmp_path / "2025-02-28" / "total_aggregated_weights_2025-02-28_test.csv").write_text("x")
+    (tmp_path / "2025-03-31" / "total_aggregated_weights_style_2025-03-31_test.csv").write_text("x")
+    # 기준일 폴더 밖(test/ 등)의 파일은 후보가 아니다
+    (tmp_path / "total_aggregated_weights_2025-04-30_test.csv").write_text("x")
     found = dd.find_latest_weights_file(tmp_path)
     assert found is not None
     assert found.name == "total_aggregated_weights_2025-02-28_test.csv"
 
 
 def test_find_latest_weights_file_respects_end_date(tmp_path):
-    (tmp_path / "total_aggregated_weights_2025-01-31_test.csv").write_text("x")
-    (tmp_path / "total_aggregated_weights_2025-02-28_test.csv").write_text("x")
+    for d in ("2025-01-31", "2025-02-28"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / f"total_aggregated_weights_{d}_test.csv").write_text("x")
     found = dd.find_latest_weights_file(tmp_path, end_date="2025-01-31")
     assert found.name == "total_aggregated_weights_2025-01-31_test.csv"
 
@@ -293,13 +298,13 @@ def test_load_sector_map_from_parquet(tmp_path):
         "factorAbbreviation": ["x", "x", "x"],
         "factorOrder": [0, 0, 0],
     })
-    df.to_parquet(tmp_path / "MXCN1A_factor_2099.parquet", index=False)
-    m = dd.load_sector_map(tmp_path, "MXCN1A", "2099-01-31")
+    df.to_parquet(tmp_path / "factor_2099.parquet", index=False)
+    m = dd.load_sector_map(tmp_path, "2099-01-31")
     assert m == {"G1": "Tech", "G2": "Energy"}
 
 
 def test_load_sector_map_missing_returns_empty(tmp_path):
-    assert dd.load_sector_map(tmp_path, "MXCN1A", "2099-01-31") == {}
+    assert dd.load_sector_map(tmp_path, "2099-01-31") == {}
 
 
 # ── 백테스트 가중치 추이 / 회전율 ──────────────────────────────────────────
@@ -362,7 +367,8 @@ def test_build_dashboard_smoke(tmp_path):
     # 백테스트 + 현재 포트 픽스처를 tmp output 디렉토리에 기록
     _curves().reset_index().to_csv(tmp_path / "walk_forward_results.csv", index=False)
     _weight_history().to_csv(tmp_path / "walk_forward_weight_history.csv")
-    _weights().to_csv(tmp_path / "total_aggregated_weights_2099-01-31_test.csv", index=True)
+    (tmp_path / "2099-01-31").mkdir()  # 기준일 폴더 (2026-09-09)
+    _weights().to_csv(tmp_path / "2099-01-31" / "total_aggregated_weights_2099-01-31_test.csv", index=True)
     pd.DataFrame(
         {
             "factorAbbreviation": ["F1", "F2", "F9"],
@@ -381,7 +387,7 @@ def test_build_dashboard_smoke(tmp_path):
 
     out = build_dashboard(output_dir=tmp_path)
     assert out.exists()
-    assert out.name == "dashboard_2099-01-31.html"
+    assert out == tmp_path / "2099-01-31" / "dashboard_2099-01-31.html"
     html = out.read_text(encoding="utf-8")
     assert "백테스트" in html
     assert "현재 포트" in html

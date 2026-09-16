@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from service.paths import DATA_DIR, OUTPUT_DIR
+from service.paths import DATA_DIR, DATE_GLOB, OUTPUT_DIR, UNIVERSE_DATA_DIR
 from service.report.diagnostics_keys import CAT_CMP, CAT_FUNNEL, CAT_OOS_CEW, METRIC_PATTERN
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
@@ -29,7 +29,7 @@ def find_latest_weights_file(output_dir: Path, end_date: str | None = None) -> P
     """
     output_dir = Path(output_dir)
     candidates: list[tuple[str, float, Path]] = []
-    for p in output_dir.glob("total_aggregated_weights_*.csv"):
+    for p in output_dir.glob(f"{DATE_GLOB}/total_aggregated_weights_*.csv"):
         if p.name.startswith("total_aggregated_weights_style"):
             continue
         m = _DATE_RE.search(p.name)
@@ -493,7 +493,7 @@ def load_style_deltas(output_dir: Path, snapshot_date: str) -> pd.DataFrame | No
 
 # ── 섹터 분해 (소스 parquet read-only join) ─────────────────────────────────
 
-def load_sector_map(data_dir: Path, benchmark: str, snapshot_date: str) -> dict:
+def load_sector_map(data_dir: Path, snapshot_date: str) -> dict:
     """소스 factor parquet에서 해당 스냅샷 날짜의 gvkeyiid -> sec 매핑.
 
     파이프라인을 건드리지 않고 기존 parquet 을 read-only 로 읽어 join 재료를 만든다.
@@ -502,7 +502,7 @@ def load_sector_map(data_dir: Path, benchmark: str, snapshot_date: str) -> dict:
     try:
         from service.download.parquet_io import load_factor_parquet
         year = int(snapshot_date[:4])
-        df = load_factor_parquet(data_dir, benchmark, start_year=year, end_year=year)
+        df = load_factor_parquet(data_dir, start_year=year, end_year=year)
     except (FileNotFoundError, ValueError, ImportError):
         return {}
     if "sec" not in df.columns or "gvkeyiid" not in df.columns:

@@ -18,8 +18,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-TEST_DATA_PATH = PROJECT_ROOT / "test_data.csv"
-from service.paths import OUTPUT_DIR  # output/{BENCHMARK}/
+TEST_DATA_PATH = PROJECT_ROOT / "tests" / "fixtures" / "test_data.csv"
+from service.paths import TEST_OUTPUT_DIR  # output/{BENCHMARK}/test/
 BASELINE_PATH = PROJECT_ROOT / "tests" / "regression_baseline.json"
 
 
@@ -31,7 +31,7 @@ def _load_baseline() -> dict:
 def _latest_meta_data() -> pd.DataFrame:
     # fixture 가 test_data.csv 파이프라인을 실행하므로 해당 meta 를 명시적으로 읽는다
     # (mtime 글롭은 직전에 실행된 production meta_data.csv 를 집을 수 있어 비결정적)
-    meta_path = OUTPUT_DIR / f"meta_data_test_{TEST_DATA_PATH.stem}.csv"
+    meta_path = TEST_OUTPUT_DIR / f"meta_data_test_{TEST_DATA_PATH.stem}.csv"
     if not meta_path.exists():
         pytest.skip(f"{meta_path.name} not found in output/")
     return pd.read_csv(meta_path)

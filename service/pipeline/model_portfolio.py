@@ -58,7 +58,10 @@ from service.pipeline.weight_history import (
 )
 from service.download.parquet_io import load_factor_parquet
 from service.pipeline.bm_weights import apply_bm_short_cap, bm_weights_at
-from service.paths import DATA_DIR, HISTORY_DIR, OUTPUT_DIR, PROJECT_ROOT as _PROJECT_ROOT, mreturn_filename
+from service.paths import (
+    DATA_DIR, HISTORY_DIR, MRETURN_FILE, OUTPUT_DIR, PROJECT_ROOT as _PROJECT_ROOT,
+    TEST_OUTPUT_DIR, UNIVERSE_DATA_DIR, dated_dir,
+)
 from utils.validation import validate_output_weights
 
 logger = logging.getLogger(__name__)
@@ -264,8 +267,8 @@ class ModelPortfolioPipeline:
             logger.info("Test data loaded from %s in %.2fs", test_data_path, time.time() - t0)
         else:
             benchmark = self.config["benchmark"]
-            raw = load_factor_parquet(DATA_DIR, benchmark, validate=True)
-            market_return_df = pd.read_parquet(DATA_DIR / mreturn_filename(benchmark))
+            raw = load_factor_parquet(UNIVERSE_DATA_DIR, validate=True)
+            market_return_df = pd.read_parquet(UNIVERSE_DATA_DIR / MRETURN_FILE)
 
             # categorical → object 변환 (pivot_table/groupby의 observed=False OOM 방지)
             for col in raw.select_dtypes(include="category").columns:
@@ -366,16 +369,16 @@ class ModelPortfolioPipeline:
         # 실측은 팩터 비중에서 재구성하므로 이 배수의 영향을 받지 않는다.
         mp_rows = final_weights["style"] == "MP"
         book_gross = float(final_weights.loc[mp_rows, "mp_ls_weight"].abs().sum())
-        # 목표 노출은 시점별 이력(data/{BENCHMARK}_mp_target_gross.csv)이 우선 — 운용 중 규모를
+        # 목표 노출은 시점별 이력(data/{BENCHMARK}/mp_target_gross.csv)이 우선 — 운용 중 규모를
         # 바꿔도 과거 시점 재현이 그때 규모로 정확히 나온다 (2026-08-21).
         target = resolve_target_gross(
-            end_date, DATA_DIR / f"{self.config['benchmark']}_mp_target_gross.csv",
+            end_date, UNIVERSE_DATA_DIR / "mp_target_gross.csv",
             self.pipeline_params.get("mp_target_gross"),
         )
         if target:
             mult, mode = multiplier_for_target(book_gross, float(target)), f"target_gross={target:g}"
         else:
-            mult, mode = resolve_multiplier(end_date, DATA_DIR / f"{self.config['benchmark']}_mp_multiplier.csv"), "manual_csv"
+            mult, mode = resolve_multiplier(end_date, UNIVERSE_DATA_DIR / "mp_multiplier.csv"), "manual_csv"
         final_weights = apply_multiplier(final_weights, mult)
         logger.info("MP 배포 배수 %.4f (%s): gross %.2f%% -> %.2f%% (롱/숏 각 %.2f%%)",
                     mult, mode, book_gross * 100, book_gross * mult * 100,
@@ -413,16 +416,19 @@ class ModelPortfolioPipeline:
         # 배포 규모를 파일명에 명시 (총 gross % — 예: gross32 = 롱/숏 각 ±16%)
         if target:
             suffix += f"_gross{round(float(target) * 100)}"
-        final_weights.to_csv(OUTPUT_DIR / f"total_aggregated_weights_{end_date}_mp{suffix}.csv")
-        final_style_weight.to_csv(OUTPUT_DIR / f"total_aggregated_weights_style_{end_date}_mp{suffix}.csv")
+        # 산출물 폴더: 기준일별 output/{BM}/{end_date}/, 테스트 모드는 output/{BM}/test/
+        out = TEST_OUTPUT_DIR if test_file else dated_dir(OUTPUT_DIR, end_date)
+        out.mkdir(parents=True, exist_ok=True)
+        final_weights.to_csv(out / f"total_aggregated_weights_{end_date}_mp{suffix}.csv")
+        final_style_weight.to_csv(out / f"total_aggregated_weights_style_{end_date}_mp{suffix}.csv")
         # MP 스타일(합산 비중) 행만 별도 파일 — 종목별 최종 롱/숏 비중 확인용
         final_style_weight.xs("MP", level="style", drop_level=False).to_csv(
-            OUTPUT_DIR / f"total_aggregated_weights_style_mponly_{end_date}{suffix}.csv"
+            out / f"total_aggregated_weights_style_mponly_{end_date}{suffix}.csv"
         )
 
         # 피벗 테이블 (MP factor_weight 백필 + 결정적 출력 가드는 헬퍼에 보존)
         pivoted_final = build_pivoted_export(final_weights, sim_result)
-        pivoted_final.to_csv(OUTPUT_DIR / f"pivoted_total_agg_wgt_{end_date}{suffix}.csv")
+        pivoted_final.to_csv(out / f"pivoted_total_agg_wgt_{end_date}{suffix}.csv")
 
         # 출력 데이터 품질 검증
         validate_output_weights(weight_raw, ticker_column="ticker", weight_column="mp_ls_weight", df_name="weight_raw")

@@ -13,7 +13,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from service.paths import DATA_DIR
+from service.paths import universe_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @lru_cache(maxsize=4)
 def load_bm_weights(benchmark: str) -> pd.DataFrame | None:
     """(ddt, gvkeyiid) -> 정규화된 BM 비중. 파일 없으면 None (제약 미적용)."""
-    path = DATA_DIR / f"{benchmark}_bmwgt.parquet"
+    path = universe_data_dir(benchmark) / "bmwgt.parquet"
     if not path.exists():
         logger.warning("%s 없음 - BM 숏 상한 미적용", path.name)
         return None

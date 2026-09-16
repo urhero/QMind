@@ -15,7 +15,7 @@ factor-level 백테스트와의 차이:
   - 콘솔 요약: 성과 비교 + netting ratio (cost_stock / cost_factor_level)
 
 parity: cew_return 은 canonical output/walk_forward_results.csv 와 일치해야 한다
-(동일 결정 재현 검증). --test 는 test_data.csv 로 엔진과 in-process 비교.
+(동일 결정 재현 검증). --test 는 tests/fixtures/test_data.csv 로 엔진과 in-process 비교.
 """
 from __future__ import annotations
 
@@ -336,7 +336,7 @@ def summarize(df: pd.DataFrame, test_file: str | None, parity_csv: str | None = 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--test", action="store_true", help="test_data.csv 로 빠른 검증")
+    ap.add_argument("--test", action="store_true", help="tests/fixtures/test_data.csv 로 빠른 검증")
     ap.add_argument("--out", default=None, help="출력 디렉토리 (기본: output/experiments)")
     ap.add_argument("--selection-cost-bps", type=float, default=None,
                     help="선정(factor-level) 비용 오버라이드. 0 = gross 선정. "
@@ -351,8 +351,8 @@ def main():
     ap.add_argument("--pp-json", default=None,
                     help='PIPELINE_PARAMS 오버라이드 JSON (예: {"spread_threshold_pct":0.05})')
     args = ap.parse_args()
-    test_file = "test_data.csv" if args.test else None
-    out_dir = Path(args.out) if args.out else PROJECT_ROOT / "output" / "experiments"
+    test_file = "tests/fixtures/test_data.csv" if args.test else None
+    out_dir = Path(args.out) if args.out else OUTPUT_DIR / "experiments"  # 유니버스별 (루트 output/ 금지)
     suffix = "" if args.selection_cost_bps is None else f"_sel{args.selection_cost_bps:g}bp"
     if args.optimization_mode:
         suffix += f"_{args.optimization_mode}"

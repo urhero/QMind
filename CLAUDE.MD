@@ -19,7 +19,7 @@
 ## 환경 설정
 
 - `config.py`가 `.env`에서 `python-dotenv`로 로드 (DB 비밀번호 등)
-- **유니버스 전환:** `.env`의 `BENCHMARK`(MXCN1A/MXWO, 없으면 `config.py` 상수 = MXWO). 이 값이 `PIPELINE_PARAMS`(공통+유니버스별), `output/{BENCHMARK}/`, `data/{BENCHMARK}_*` 를 전부 결정. 일회성 덮어쓰기는 `BENCHMARK=MXWO python main.py ...` (환경변수가 `.env` 보다 우선). **로컬 `.env` 는 사용자 관리 — Claude 가 수정하지 않는다**
+- **유니버스 전환:** `.env`의 `BENCHMARK`(MXCN1A/MXWO, 없으면 `config.py` 상수 = MXWO). 이 값이 `PIPELINE_PARAMS`(공통+유니버스별), `output/{BENCHMARK}/`, `data/{BENCHMARK}/` 를 전부 결정. 일회성 덮어쓰기는 `BENCHMARK=MXWO python main.py ...` (환경변수가 `.env` 보다 우선). **로컬 `.env` 는 사용자 관리 — Claude 가 수정하지 않는다**
 - 설치: `pipenv install`
 - 테스트: `python -m pytest tests/test_unit/ -v`
 
@@ -28,7 +28,7 @@
 코드 수정 시 **반드시** 다음을 수행. 공통 코드(`service/`, `config.py` 구조)를 건드렸으면 **`BENCHMARK=MXCN1A` 와 `BENCHMARK=MXWO` 양쪽** 모두 검증한다 (산출물은 `output/{BENCHMARK}/`):
 
 ### A. 테스트 검증
-1. **변경 전** 베이스라인: `python main.py mp test test_data.csv`
+1. **변경 전** 베이스라인: `python main.py mp test tests/fixtures/test_data.csv`
 2. **코드 변경 적용**
 3. **변경 후** 결과 생성 및 diff 비교 (같은 명령어)
 4. **pytest 통과**: `python -m pytest tests/test_unit/ -v`
@@ -42,7 +42,7 @@
 ### C. 마무리
 - **문서 업데이트** (`README.md`, `research.md`, 해당 시 이 파일도)
 - **실험(A/B) 문서는 `docs/experiments/_TEMPLATE.md` 기반으로 작성** — 채택 전 검증 체크리스트(mp_level 실측, RC 분포, byte-diff) 필수 경유
-- 비교 대상: `output/{BENCHMARK}/` 의 `aggregated_weights_*`, `total_aggregated_weights_*`, `pivoted_total_agg_wgt_*`, `meta_data_*`, `walk_forward_results_*`
+- 비교 대상: `output/{BENCHMARK}/test/`(mp test) 및 `output/{BENCHMARK}/<date>/`(실데이터) 의 `aggregated_weights_*`, `total_aggregated_weights_*`, `pivoted_total_agg_wgt_*`, `meta_data_*`, `walk_forward_results_*`
 - A, B **모두** 변경 전후 일치해야 함 (의도된 변경 제외)
 
 ## 문서 체계
@@ -62,8 +62,8 @@
 - **Entry Point:** `main.py` -> `service/pipeline/model_portfolio.py:run_model_portfolio_pipeline()`
 - **Backtest Entry:** `main.py` -> `service/backtest/walk_forward_engine.py:WalkForwardEngine.run()`
 - **Data I/O:** `service/download/parquet_io.py`의 `load_factor_parquet()`가 연도별 분할 parquet 자동 병합
-- **Test Mode:** `python main.py mp test test_data.csv` (소량 데이터 검증용, `_test` suffix 출력)
-- **산출물 경로:** 항상 `service.paths.OUTPUT_DIR`(= `output/{BENCHMARK}/`) 사용. 루트 `output/` 하드코딩 금지. 유니버스 종속 데이터 파일은 `data/{PARAM['benchmark']}_...` 로 조회
+- **Test Mode:** `python main.py mp test tests/fixtures/test_data.csv` (소량 데이터 검증용, `_test` suffix 출력)
+- **산출물 경로:** 항상 `service.paths.OUTPUT_DIR`(= `output/{BENCHMARK}/`) 사용. 루트 `output/` 하드코딩 금지. 유니버스 종속 데이터 파일은 `service.paths.UNIVERSE_DATA_DIR`(= `data/{BENCHMARK}/`) 로 조회, 공통 파일(`factor_info.csv`)만 `DATA_DIR`
 - **Flow 참조:** `docs/VARIABLE_FLOW.md`
 - **성능:** vectorized 연산 유지, 루프 도입 금지 선호
 - **OOS 오염 주의:** Walk-Forward 엔진에서 IS 규칙(dropped_sectors, label_rules)을 전체 데이터에 적용할 때 `filter_and_label_factors()`를 재실행하면 OOS look-ahead bias 발생. 반드시 `rule_bundle`의 IS 전용 규칙을 직접 매핑할 것

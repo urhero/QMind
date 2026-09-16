@@ -14,8 +14,8 @@ graph TD
     classDef file fill:#fff3e0,stroke:#e65100,stroke-width:2px,stroke-dasharray: 5 5;
 
     %% --- [1] Load Data ---
-    File_Factor[("📄 {benchmark}_factor.parquet<br/>(팩터 데이터, factor_info merge 완료)")]:::file
-    File_MRet[("📄 {benchmark}_mreturn.parquet<br/>(M_RETURN, 67K행)")]:::file
+    File_Factor[("📄 data/{benchmark}/factor_YYYY.parquet<br/>(팩터 데이터, factor_info merge 완료)")]:::file
+    File_MRet[("📄 data/{benchmark}/mreturn.parquet<br/>(M_RETURN, 67K행)")]:::file
     File_Info[("📄 factor_info.csv")]:::file
 
     Func_Load{{"[1] _load_data + _prepare_metadata<br/>(pipeline-ready parquet 로드, M_RETURN 병합)"}}:::func

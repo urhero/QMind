@@ -30,7 +30,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 ```
 
 `BENCHMARK` 하나로 `config.py`가 `PARAM`(DB/universe), `PIPELINE_PARAMS`(공통 + 유니버스별 오버라이드),
-`service/paths.py`의 `OUTPUT_DIR = output/{BENCHMARK}/`, 유니버스 종속 데이터(`data/{BENCHMARK}_*`)를 전부 결정한다.
+`service/paths.py`의 `OUTPUT_DIR = output/{BENCHMARK}/`, 유니버스 종속 데이터(`data/{BENCHMARK}/`)를 전부 결정한다.
 미등록 값은 `KeyError`로 즉시 실패한다. 두 유니버스의 파라미터 차이는 [유니버스별 파라미터](#유니버스별-파라미터-mxcn1a-vs-mxwo).
 
 **개발 브랜치/워크트리 (2026-09-09):** 유니버스별 개발은 전용 브랜치 + 형제 폴더 워크트리에서 하고 `main` 으로 머지한다.
@@ -72,9 +72,9 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 - 각 팩터는 **스타일 단위(Valuation, Momentum, Quality, Growth 등)**로 분류
 
 ### 입력 데이터
-- `data/{benchmark}_factor_{YYYY}.parquet` — 연도별 분할 팩터 데이터
-- `data/{benchmark}_mreturn.parquet` — 월간 수익률
-- `data/factor_info.csv` — 팩터 메타 정보
+- `data/{benchmark}/factor_{YYYY}.parquet` — 연도별 분할 팩터 데이터
+- `data/{benchmark}/mreturn.parquet` — 월간 수익률
+- `data/factor_info.csv` — 팩터 메타 정보 (유니버스 공통)
 - `data/hardcoded_weights.csv` — 프로덕션 고정 가중치 (hardcoded 모드용)
 
 ### 다운로드
@@ -176,6 +176,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
   - `total_aggregated_weights_style_{end_date}_mp.csv` — 스타일별 집계 (종목 단위); `..._style_mponly_{end_date}.csv` 는 style=MP 행만 (종목별 최종 비중)
   - `pivoted_total_agg_wgt_{end_date}.csv` — 피벗 형태 (Optimizer 연동용)
   - `meta_data.csv` — 팩터 성과 요약 (test 모드에서만 `meta_data_test_*.csv`로 바뀜)
+- 기준일 붙는 산출물은 전부 기준일 폴더 `output/{BENCHMARK}/<date>/` (2026-09-09); `mp test` 산출물은 `output/{BENCHMARK}/test/`
 - factor 가중치 + style 요약 → `output/{BENCHMARK}/mp_weight_history/` (production 실행 시 항상 저장, test 모드는 3종 모두 미저장)
   - `factor_weights_{end_date}.csv` — factor 단위 배포 가중치 (다음 회차 전월대비 delta 입력용)
   - `factor_styles_{end_date}.csv` — factor × style + raw/prev/new 가중치 분해
@@ -289,7 +290,7 @@ python main.py backtest 2009-12-31 2026-03-31 \
   --top-factors 50
 
 # 테스트 모드
-python main.py backtest test test_data.csv --min-is-months 4
+python main.py backtest test tests/fixtures/test_data.csv --min-is-months 4
 ```
 
 ```python
@@ -310,18 +311,18 @@ result.to_csv("output/{BENCHMARK}/wf.csv")      # 결과 저장
 백테스트 결과 및 과적합 진단 상세는 [`docs/backtest_results_2009_2026.md`](docs/backtest_results_2009_2026.md) 참조.
 
 **산출 파일:**
-- `output/{BENCHMARK}/walk_forward_results.csv` — OOS 월별 Constrained EW / EW(선정) / EW_All / EW_Top50(dedup 이전 랭킹 Top-50) 수익률 + 누적 수익률 ([research.md §6.4](research.md) 곡선 정의 참조)
-- `output/{BENCHMARK}/overfit_diagnostics.csv` — 과적합 진단 5개 지표 요약
-- `output/{BENCHMARK}/walk_forward_weight_history.csv` — 월별 팩터 가중치 이력 (대시보드 비중 추이/회전율용)
-- `output/{BENCHMARK}/dashboard_<date>.html` — **백테스트 실행 시 자동 생성**되는 인터랙티브 리포트 (KPI + 과적합 진단 전체 표 + 차트). `viz`로 재생성 가능
+- `output/{BENCHMARK}/<date>/walk_forward_results_<date>.csv` — OOS 월별 Constrained EW / EW(선정) / EW_All / EW_Top50(dedup 이전 랭킹 Top-50) 수익률 + 누적 수익률 ([research.md §6.4](research.md) 곡선 정의 참조)
+- `output/{BENCHMARK}/<date>/overfit_diagnostics_<date>.csv` — 과적합 진단 5개 지표 요약
+- `output/{BENCHMARK}/<date>/walk_forward_weight_history_<date>.csv` — 월별 팩터 가중치 이력 (대시보드 비중 추이/회전율용)
+- `output/{BENCHMARK}/<date>/dashboard_<date>.html` — **백테스트 실행 시 자동 생성**되는 인터랙티브 리포트 (KPI + 과적합 진단 전체 표 + 차트). `viz`로 재생성 가능
 
 ### 시각화 대시보드 사용법 (viz)
 백테스트 내역과 현재 포트(배팅)를 단일 인터랙티브 HTML 리포트로 본다.
-기존 `output/{BENCHMARK}/*.csv`만 읽는 read-only 레이어라 파이프라인을 건드리지 않는다 (plotly 사용, 새 의존성 없음).
+기존 `output/{BENCHMARK}/<date>/*.csv`만 읽는 read-only 레이어라 파이프라인을 건드리지 않는다 (plotly 사용, 새 의존성 없음).
 `backtest` 실행 시 자동 생성되며, 아래 `viz`로 언제든 최신 CSV 기준 재생성한다.
 
 ```bash
-# 최신 스냅샷으로 대시보드 생성 -> output/{BENCHMARK}/dashboard_<date>.html
+# 최신 스냅샷으로 대시보드 생성 -> output/{BENCHMARK}/<date>/dashboard_<date>.html
 python main.py viz
 
 # 특정 스냅샷 날짜 지정
@@ -342,9 +343,9 @@ python main.py viz --open
 
 HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 
-> **스타일 비중 추이/회전율**은 `output/{BENCHMARK}/walk_forward_weight_history.csv`가 있어야 표시된다.
+> **스타일 비중 추이/회전율**은 `output/{BENCHMARK}/<date>/walk_forward_weight_history_<date>.csv`가 있어야 표시된다.
 > 이 파일은 `python main.py backtest ...` 실행 시 생성되므로, 백테스트를 한 번 돌려야 한다.
-> **섹터별 순비중**은 `data/{benchmark}_factor_<연도>.parquet`을 read-only 로 읽어 `gvkeyiid`로 join한다
+> **섹터별 순비중**은 `data/{benchmark}/factor_<연도>.parquet`을 read-only 로 읽어 `gvkeyiid`로 join한다
 > (파이프라인/출력 스키마 무수정).
 
 ---
@@ -412,7 +413,7 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 | `mp_target_gross` | 0.14 (롱 +7% / 숏 -7%, 2026-08-31 스냅샷부터; 이전은 배수 1.0) | 0.40 (롱 +20% / 숏 -20%) |
 | `apply_country_tax` | False (A주는 등록지 무관하게 본토 인지세 대상 — 등록지 세율표 부적합) | True (COUNTRY_TAX_BPS, 실측 회계 전용) |
 | 출력 경로 | `output/MXCN1A/` | `output/MXWO/` |
-| 유니버스 종속 데이터 | `data/MXCN1A_*` (+ `_mp_target_gross.csv`) | `data/MXWO_*` (+ `_mp_target_gross.csv`, `_mp_multiplier.csv`, `_bm_returns.csv`, `_bmwgt.parquet`, `_country_map.parquet`) |
+| 유니버스 종속 데이터 | `data/MXCN1A/` (+ `mp_target_gross.csv`) | `data/MXWO/` (+ `mp_target_gross.csv`, `mp_multiplier.csv`, `bm_returns.csv`, `bmwgt.parquet`, `country_map.parquet`) |
 | 정본 실측 (배포 기준) | net Sharpe 0.703 / MDD -4.87% (미스케일, 거래세 미반영) | Sharpe 0.734 / MDD -1.80% / TE 1.04% (롱숏 ±20%, 거래세 반영) |
 
 공통 항목(style_cap 0.25, spread 0.05, ERC 모드, ts_mom_window 3, deploy_step 1.0 등)은 `config.py`의 `_COMMON_PARAMS`,

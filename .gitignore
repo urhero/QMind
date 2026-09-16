@@ -192,18 +192,18 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 
-# Custom additions — 분할 parquet과 메타데이터만 추적
+# Custom additions — 분할 parquet과 메타데이터만 추적 (data/{BENCHMARK}/ 레이아웃, 2026-09-09)
 data/*
-!data/MXCN1A_factor_*.parquet
-!data/MXCN1A_mreturn.parquet
-!data/MXWO_factor_*.parquet
-!data/MXWO_mreturn.parquet
-!data/MXWO_country_map.parquet
 !data/factor_info.csv
 !data/hardcoded_weights.csv
-!data/*_mp_target_gross.csv
-!data/*_mp_multiplier.csv
-data_backup/
+!data/MXCN1A/
+!data/MXWO/
+data/*/*
+!data/*/factor_*.parquet
+!data/*/mreturn.parquet
+!data/*/country_map.parquet
+!data/*/mp_target_gross.csv
+!data/*/mp_multiplier.csv
 #config.py
 .cursorindexingignore
 node_modules/

@@ -23,7 +23,7 @@ import pandas as pd
 
 import config
 from config import COUNTRY_TAX_BPS, PARAM
-from service.paths import DATA_DIR
+from service.paths import universe_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def _rate_frame(benchmark: str) -> pd.DataFrame | None:
     국가맵 파일이 없으면 None -> 거래세 미적용 (해당 유니버스에 매핑이 없거나
     CI/테스트 환경처럼 데이터가 없는 경우. 크래시 대신 0 으로 degrade).
     """
-    path = DATA_DIR / f"{benchmark}_country_map.parquet"
+    path = universe_data_dir(benchmark) / "country_map.parquet"
     if not path.exists():
         logger.warning("%s 없음 - 국가별 거래세 미적용", path.name)
         return None

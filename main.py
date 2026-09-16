@@ -4,10 +4,10 @@
     python main.py download 2023-01-01 2023-12-31          # 전체 다운로드
     python main.py download 2023-01-01 2023-12-31 --incremental  # 증분 다운로드
     python main.py mp 2023-01-01 2023-12-31                # Model Portfolio 생성
-    python main.py mp test test_data.csv                   # 테스트 모드
+    python main.py mp test tests/fixtures/test_data.csv                   # 테스트 모드
     python main.py mp 2023-01-01 2023-12-31 --report       # 별첨 리포트 북만 생성
     python main.py backtest 2017-12-31 2026-03-31          # Walk-Forward 백테스트
-    python main.py backtest test test_data.csv             # 백테스트 테스트 모드
+    python main.py backtest test tests/fixtures/test_data.csv             # 백테스트 테스트 모드
     python main.py viz [YYYY-MM-DD] [--open]               # 기존 산출물 -> HTML 대시보드
 
 README.md [1]~[7] 파이프라인 단계를 라우팅한다.
@@ -25,7 +25,7 @@ from service.pipeline.model_portfolio import run_model_portfolio_pipeline
 def _split_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """mp/backtest 공통 위치 인자 해석: 'test <file>' 또는 '<start_date> <end_date>'.
 
-    테스트: python main.py mp test test_data.csv  (소량 검증, _test 접미사)
+    테스트: python main.py mp test tests/fixtures/test_data.csv  (소량 검증, _test 접미사)
     일반:   python main.py mp 2023-01-01 2023-12-31  (프로덕션)
     """
     if len(args.args) != 2:

@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # 프로젝트 루트
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-TEST_DATA_PATH = PROJECT_ROOT / "test_data.csv"
-from service.paths import OUTPUT_DIR  # output/{BENCHMARK}/
+TEST_DATA_PATH = PROJECT_ROOT / "tests" / "fixtures" / "test_data.csv"
+from service.paths import OUTPUT_DIR, TEST_OUTPUT_DIR  # output/{BENCHMARK}/, output/{BENCHMARK}/test/
 
 
 class TestPipelineEndToEnd:
@@ -79,7 +79,7 @@ class TestPipelineEndToEnd:
         )
 
         # 출력 파일 존재 확인
-        output_files = list(OUTPUT_DIR.glob("*_test*.csv"))
+        output_files = list(TEST_OUTPUT_DIR.glob("*_test*.csv"))
         assert len(output_files) > 0, "No test output files created"
 
     @pytest.mark.skipif(
@@ -97,7 +97,7 @@ class TestPipelineEndToEnd:
         )
 
         # meta_data 파일 찾기
-        meta_files = list(OUTPUT_DIR.glob("meta_data*.csv"))
+        meta_files = list(TEST_OUTPUT_DIR.glob("meta_data*.csv"))
         assert len(meta_files) > 0, "meta_data.csv not found"
 
         meta_df = pd.read_csv(meta_files[0])
@@ -126,7 +126,7 @@ class TestPipelineDataValidation:
         )
 
         # total_aggregated_weights 파일 확인
-        weight_files = list(OUTPUT_DIR.glob("total_aggregated_weights*_test*.csv"))
+        weight_files = list(TEST_OUTPUT_DIR.glob("total_aggregated_weights*_test*.csv"))
         if weight_files:
             weights_df = pd.read_csv(weight_files[0])
 
@@ -151,7 +151,7 @@ class TestPipelineDataValidation:
         )
 
         # total_aggregated_weights 파일 확인
-        total_weight_files = list(OUTPUT_DIR.glob("total_aggregated_weights*_test*.csv"))
+        total_weight_files = list(TEST_OUTPUT_DIR.glob("total_aggregated_weights*_test*.csv"))
         if total_weight_files:
             weights_df = pd.read_csv(total_weight_files[0])
 
@@ -190,7 +190,7 @@ class TestPipelineOutputConsistency:
         ]
 
         for pattern in expected_patterns:
-            files = list(OUTPUT_DIR.glob(pattern))
+            files = list(TEST_OUTPUT_DIR.glob(pattern))
             # 각 패턴에 대해 최소 1개 파일 존재해야 함 (패턴에 따라)
             # 일부 패턴은 선택적일 수 있음
 
@@ -271,7 +271,7 @@ class TestStyleLsWeightCalculation:
     @staticmethod
     def _get_latest_style_file() -> Path:
         """가장 최근 수정된 style 출력 파일 반환"""
-        style_files = list(OUTPUT_DIR.glob("total_aggregated_weights_style*_test*.csv"))
+        style_files = list(TEST_OUTPUT_DIR.glob("total_aggregated_weights_style*_test*.csv"))
         if not style_files:
             return None
         # 수정 시간 기준 정렬하여 가장 최근 파일 반환
