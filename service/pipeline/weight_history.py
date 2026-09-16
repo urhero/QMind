@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Production mp 명령의 factor weight history 관리.
+"""Production mp 명령의 회차 간 이력 (output/{BENCHMARK}/mp_weight_history/).
 
-Absolute-step smoothing 을 production 에서도 적용하기 위해
-이전 mp 실행의 factor weights 를 별도 디렉토리에 저장 / 로딩한다.
-
-설계 원리:
-- 첫 mp 실행: prev 없음 -> raw weights 그대로 (smoothing skip)
-- 두번째 이상 실행: 직전 가장 최근 history 로딩 -> absolute-step 블렌딩
-- history 저장은 smoothing 적용 결과
+직전 회차 산출물을 다음 회차의 입력으로 쓴다:
+- factor_weights_{date}.csv : 배포 가중치 -> deploy_step<1 부분 조정의 prev, 전월대비 delta 리포트
+- factor_styles_{date}.csv  : raw/prev/new 분해 -> 선정 히스테리시스 incumbents (raw_weight>0)
+- style_totals / factor_clusters / deploy_multiplier : 분석·대시보드용 기록
+test 모드는 어떤 파일도 저장하지 않는다 (prod history 오염 방지).
 """
 from __future__ import annotations
 

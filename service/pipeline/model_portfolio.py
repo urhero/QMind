@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 """Model Portfolio(MP) 생성 파이프라인 오케스트레이터.
 
-200+ 팩터 데이터를 분석하여 최종 투자 포트폴리오(MP)를 생성한다.
-현재 MP는 Top-N 동일가중(equal-weight)에 style_cap(기본 25%) 제약만 추가한
-Constrained EW 방식으로 구성된다. 공분산/리스크 모델 기반 최적화는 포함하지
-않는다 (커밋 8dfb64e에서 Monte Carlo 최적화는 제거됨).
+200+ 팩터 데이터를 분석하여 최종 투자 포트폴리오(MP)를 생성한다. 선정 팩터에
+optimization_mode(기본 erc: 상관 인지 ERC + TS 모멘텀 틸트) 가중을 주고
+style_cap(25%) 재분배를 거쳐 종목별 비중으로 전개한다. 공분산/리스크 모델 기반의
+종목단 최적화는 포함하지 않는다 (커밋 8dfb64e 에서 제거).
 
 각 단계의 실제 로직은 별도 모듈에 위치하며, 이 파일은 조율만 담당한다.
 
-모듈 구조:
-- factor_analysis.py: 5분위 분석 + 섹터 필터링
-- optimization.py: 가중치 계산 (equal_weight + style_cap)
-- weight_construction.py: 롱/숏 포트폴리오 수익률 + MP 가중치 구성
+모듈 구조 (README [N] 단계 대응):
+- factor_analysis.py:     [2]~[3] 5분위 분석 + 섹터 필터 / L·N·S 라벨
+- universe.py:            [4] 롱-숏 수익률 행렬 + 팩터 선정 (service/factor/ 공유 도메인)
+- optimization.py:        [6] 가중치 (erc / equal_risk_weight / equal_weight / hardcoded + style_cap)
+- weight_construction.py: [7] 종목 전개, 섹터 숏캡, 배포 배수, CSV 피벗
+- weight_history.py:      회차 간 이력 (mp_weight_history/)
 """
 from __future__ import annotations
 
@@ -74,8 +76,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 class ModelPortfolioPipeline:
     """Model Portfolio(MP) 생성 파이프라인.
 
-    현재 MP는 Top-N 팩터를 동일가중(1/N)으로 할당한 뒤 style_cap 제약
-    (기본 25%)을 반복 재분배 적용하는 Constrained EW 방식으로 구성된다.
+    선정 팩터(rank_score 상위 / 옵션 클러스터 dedup)에 optimization_mode 가중
+    (기본 erc + TS 틸트)을 주고 style_cap(25%) 재분배 후 종목별 비중으로 전개한다.
     파이프라인의 각 단계를 순차적으로 실행하며, 중간 결과물을 인스턴스 변수로
     보관하여 디버깅과 분석에 활용할 수 있다.
 
@@ -266,7 +268,6 @@ class ModelPortfolioPipeline:
             raw = raw.loc[~m_mask]
             logger.info("Test data loaded from %s in %.2fs", test_data_path, time.time() - t0)
         else:
-            benchmark = self.config["benchmark"]
             raw = load_factor_parquet(UNIVERSE_DATA_DIR, validate=True)
             market_return_df = pd.read_parquet(UNIVERSE_DATA_DIR / MRETURN_FILE)
 
@@ -419,16 +420,19 @@ class ModelPortfolioPipeline:
         # 산출물 폴더: 기준일별 output/{BM}/{end_date}/, 테스트 모드는 output/{BM}/test/
         out = TEST_OUTPUT_DIR if test_file else dated_dir(OUTPUT_DIR, end_date)
         out.mkdir(parents=True, exist_ok=True)
-        final_weights.to_csv(out / f"total_aggregated_weights_{end_date}_mp{suffix}.csv")
-        final_style_weight.to_csv(out / f"total_aggregated_weights_style_{end_date}_mp{suffix}.csv")
-        # MP 스타일(합산 비중) 행만 별도 파일 — 종목별 최종 롱/숏 비중 확인용
+        # 산출물 4종 — 어간 통일 (2026-09-16; 구 total_aggregated_weights[_style[_mponly]] / pivoted_total_agg_wgt):
+        #   weights_factor : 종목 x 팩터 전개 행 + MP 합산 행 (감사 추적)
+        #   weights_style  : 스타일별 종목 집계
+        #   weights_mp     : style=MP 행만 = 종목별 최종 롱/숏 비중
+        #   weights_pivot  : 피벗 (Bloomberg Optimizer 입력)
+        final_weights.to_csv(out / f"weights_factor_{end_date}{suffix}.csv")
+        final_style_weight.to_csv(out / f"weights_style_{end_date}{suffix}.csv")
         final_style_weight.xs("MP", level="style", drop_level=False).to_csv(
-            out / f"total_aggregated_weights_style_mponly_{end_date}{suffix}.csv"
+            out / f"weights_mp_{end_date}{suffix}.csv"
         )
-
         # 피벗 테이블 (MP factor_weight 백필 + 결정적 출력 가드는 헬퍼에 보존)
         pivoted_final = build_pivoted_export(final_weights, sim_result)
-        pivoted_final.to_csv(out / f"pivoted_total_agg_wgt_{end_date}{suffix}.csv")
+        pivoted_final.to_csv(out / f"weights_pivot_{end_date}{suffix}.csv")
 
         # 출력 데이터 품질 검증
         validate_output_weights(weight_raw, ticker_column="ticker", weight_column="mp_ls_weight", df_name="weight_raw")

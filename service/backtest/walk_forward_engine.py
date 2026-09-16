@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Walk-Forward (Expanding Window) 백테스트 엔진.
+"""Walk-Forward 백테스트 엔진 (IS 창 = config is_window_months: 롤링 N개월 / None=expanding).
 
 ModelPortfolioPipeline을 감싸는 Walk-Forward 오케스트레이터.
 파이프라인 모듈의 내부 코드를 수정하지 않고, 순수 함수를 호출하여
@@ -28,12 +28,7 @@ from service.backtest.stock_level import (
     stock_weights_at,
 )
 from service.factor.factor_returns import aggregate_factor_returns
-from service.factor.selection import (
-    apply_selection_hysteresis,
-    cluster_and_dedup_top_n,
-    cluster_winner_median_dedup,
-    compute_rank_score,
-)
+from service.factor.selection import compute_rank_score, select_factors
 from service.paths import DATA_DIR, OUTPUT_DIR, UNIVERSE_DATA_DIR, dated
 from service.pipeline.factor_analysis import (
     ANALYZE_COLS,
@@ -147,8 +142,14 @@ def _apply_rules_and_aggregate(
     rule_bundle: dict[str, Any],
     pipeline: ModelPortfolioPipeline,
     out_frames: dict | None = None,
+    horizon=None,
 ) -> pd.DataFrame:
     """IS에서 학습한 규칙을 (사전 계산된) 전체 데이터 5분위 통계에 적용하고 팩터 수익률을 사전 계산한다.
+
+    horizon: 이 Tier 1 이 실제로 소비하는 마지막 월 (+1, 턴오버 lookahead 분). 지정 시
+    라벨 프레임을 ddt <= horizon 으로 잘라 미래 구간 계산을 생략한다 (2026-09-16).
+    부수 효과로 "미래 월의 롱/숏 소실 -> 팩터 전체 탈락"(aggregate 의 NaN 열 제거)이
+    현재 시점 선정에 영향을 주던 look-ahead 도 사라진다.
 
     Tier 1 핵심: 전체 데이터의 횡단면 5분위 랭킹(안전)에 IS 전용 규칙
     (dropped_sectors, label_rules)을 적용하여 aggregate_factor_returns를
@@ -212,6 +213,8 @@ def _apply_rules_and_aggregate(
 
         raw_clean["label"] = raw_clean["quantile"].map(labels)
         merged = raw_clean.dropna(subset=["label"])
+        if horizon is not None:
+            merged = merged[merged["ddt"] <= horizon]
 
         if merged.empty:
             continue
@@ -290,7 +293,7 @@ def _run_weight_optimization(
 
 
 class WalkForwardEngine:
-    """Walk-Forward (Expanding Window) 백테스트 오케스트레이터.
+    """Walk-Forward 백테스트 오케스트레이터.
 
     기존 파이프라인 모듈의 내부 코드를 수정하지 않고,
     데이터를 메모리에 1회만 로드하고 날짜 필터로 IS 범위를 제어한다.
@@ -299,7 +302,7 @@ class WalkForwardEngine:
         min_is_months: 최소 IS 기간 (기본 36).
         factor_rebal_months: Tier 1 리밸런싱 주기 (기본 6).
         weight_rebal_months: Tier 2 리밸런싱 주기 (기본 3).
-        top_factors: 상위 팩터 수 (기본 50).
+        top_factors: 상위 팩터 수. None(기본)이면 config top_factor_count (production parity).
         selection_hysteresis: 선정 히스테리시스 margin (rank_score 단위,
             기본 0.0=off). 챌린저가 기존 보유 팩터를 이 격차 이상 이겨야 교체.
     """
@@ -309,7 +312,7 @@ class WalkForwardEngine:
         min_is_months: int = 36,
         factor_rebal_months: int = 6,
         weight_rebal_months: int = 3,
-        top_factors: int = 50,
+        top_factors: int | None = None,
         selection_hysteresis: float = 0.0,
         pipeline_params_override: dict | None = None,
         is_window_months: int | None = None,
@@ -344,10 +347,12 @@ class WalkForwardEngine:
         logger.info("Walk-Forward backtest starting: %s ~ %s", start_date, end_date)
 
         # pipeline_params 커스텀 (config의 optimization_mode 유지)
-        # 순서: PIPELINE_PARAMS 기본 -> top_factor_count 를 CLI(self.top_factors) 로 덮어씀
-        # -> override 적용 (override 가 최우선; top_factor_count 도 override 가능)
+        # 순서: PIPELINE_PARAMS 기본 -> CLI top_factors(지정 시)로 top_factor_count 덮어씀
+        # -> override 적용 (override 가 최우선). CLI 미지정(None)이면 config 값 그대로
+        # (구 기본 50 하드코딩은 config 를 바꿔도 백테스트가 못 따라가는 parity 구멍이었음).
         pp = dict(PIPELINE_PARAMS)
-        pp["top_factor_count"] = self.top_factors
+        if self.top_factors is not None:
+            pp["top_factor_count"] = self.top_factors
         if self.pipeline_params_override:
             pp.update(self.pipeline_params_override)
         if pp["optimization_mode"] == "hardcoded":
@@ -431,10 +436,13 @@ class WalkForwardEngine:
                     None, None, pipeline, test_file, prepared=prepared_is,
                 )
 
-                # 사전 계산된 전체 데이터 5분위 통계에 규칙 적용 + aggregate 1회 실행
+                # 사전 계산된 전체 데이터 5분위 통계에 규칙 적용 + aggregate 1회 실행.
+                # 이 Tier 1 이 쓰는 마지막 월 = OOS i+factor_rebal_months-1, 턴오버 lookahead 로 +1.
+                horizon_idx = min(len(all_dates) - 1,
+                                  self.min_is_months + i + self.factor_rebal_months)
                 precomputed_ret_df = _apply_rules_and_aggregate(
                     factor_stats_full, factor_abbr_list_full, cached_rule_bundle, pipeline,
-                    out_frames=stock_frames,
+                    out_frames=stock_frames, horizon=pd.Timestamp(all_dates[horizon_idx]),
                 )
 
                 if precomputed_ret_df.empty:
@@ -472,8 +480,8 @@ class WalkForwardEngine:
                 else:
                     ret_df_is.iloc[0] = 0.0  # 기준점
 
-                    # 0 수익률 월 필터
-                    valid = ret_df_is.columns[(ret_df_is == 0).sum() <= pp["max_zero_return_months"]]
+                    # 0 수익률 월 필터 (첫 행 기준점 0 제외 — mp evaluate_universe 와 동일 규칙, 2026-09-16)
+                    valid = ret_df_is.columns[(ret_df_is.iloc[1:] == 0).sum() <= pp["max_zero_return_months"]]
                     ret_df_is = ret_df_is[valid]
 
                     if len(ret_df_is.columns) < MIN_REQUIRED_FACTORS:
@@ -633,37 +641,12 @@ class WalkForwardEngine:
         # meta_df 는 rank_score 내림차순 정렬 상태.
         rank_topn = meta_df["factorAbbreviation"].head(top_n).tolist()
 
-        # Sprint 1-B: Hierarchical Clustering 기반 중복 제거
-        if pp.get("use_cluster_dedup", False):
-            score_series = meta_df.set_index("factorAbbreviation")["rank_score"]
-            if pp.get("cluster_method", "topn") == "winner_median":
-                selected = cluster_winner_median_dedup(
-                    monthly_rets, score_series,
-                    n_clusters=int(pp.get("n_clusters", 18)),
-                    per_cluster_keep=int(pp.get("per_cluster_keep", 3)),
-                )
-            else:
-                selected = cluster_and_dedup_top_n(
-                    monthly_rets, score_series,
-                    n_clusters=int(pp.get("n_clusters", 18)),
-                    per_cluster_keep=int(pp.get("per_cluster_keep", 3)),
-                    top_n=top_n,
-                )
-            meta_top = meta_df.set_index("factorAbbreviation").loc[selected].reset_index()
-        else:
-            meta_top = meta_df.head(top_n)
-            selected = meta_top["factorAbbreviation"].tolist()
-
-        # 선정 히스테리시스: 직전 보유 팩터를 margin 미만 격차의
-        # 챌린저로부터 보호 (노이즈성 교체 churn 절감)
-        if self.selection_hysteresis > 0 and incumbents:
-            score_full = meta_df.set_index("factorAbbreviation")["rank_score"]
-            adjusted = apply_selection_hysteresis(
-                list(selected), score_full, set(incumbents), self.selection_hysteresis,
-            )
-            if set(adjusted) != set(selected):
-                selected = adjusted
-                meta_top = meta_df.set_index("factorAbbreviation").loc[selected].reset_index()
+        # 선정(절단/클러스터 dedup) + 히스테리시스 — production mp 와 select_factors() 공유
+        selected = select_factors(
+            monthly_rets, meta_df.set_index("factorAbbreviation")["rank_score"], pp, top_n,
+            incumbents=incumbents, margin=self.selection_hysteresis,
+        )
+        meta_top = meta_df.set_index("factorAbbreviation").loc[selected].reset_index()
         return selected, meta_top, rank_topn
 
     def _assemble_oos_record(self, oos_date, precomputed_ret_df, cached_weights, cached_meta,

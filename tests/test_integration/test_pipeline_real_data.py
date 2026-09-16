@@ -130,26 +130,26 @@ class TestRealDataOutputFiles:
     """실제 데이터 출력 파일 존재 및 구조 검증"""
 
     @pytest.mark.skipif(not HAS_REAL_DATA, reason="No year-split parquet in data/")
-    def test_total_aggregated_weights_file_exists(self, pipeline_result) -> None:
-        """total_aggregated_weights CSV가 생성되는지 확인"""
+    def test_weights_factor_file_exists(self, pipeline_result) -> None:
+        """weights_factor CSV가 생성되는지 확인"""
         end_date = pipeline_result["end_date"]
-        pattern = f"total_aggregated_weights_{end_date}_test.csv"
+        pattern = f"weights_factor_{end_date}_test.csv"
         files = list(OUTPUT_DIR.glob(pattern))
         assert len(files) >= 1, f"Expected {pattern} in output/"
 
     @pytest.mark.skipif(not HAS_REAL_DATA, reason="No year-split parquet in data/")
-    def test_total_aggregated_weights_style_file_exists(self, pipeline_result) -> None:
-        """total_aggregated_weights_style CSV가 생성되는지 확인"""
+    def test_weights_style_file_exists(self, pipeline_result) -> None:
+        """weights_style CSV가 생성되는지 확인"""
         end_date = pipeline_result["end_date"]
-        pattern = f"total_aggregated_weights_style_{end_date}_mp_test.csv"
+        pattern = f"weights_style_{end_date}_mp_test.csv"
         files = list(OUTPUT_DIR.glob(pattern))
         assert len(files) >= 1, f"Expected {pattern} in output/"
 
     @pytest.mark.skipif(not HAS_REAL_DATA, reason="No year-split parquet in data/")
     def test_pivoted_weights_file_exists(self, pipeline_result) -> None:
-        """pivoted_total_agg_wgt CSV가 생성되는지 확인"""
+        """weights_pivot CSV가 생성되는지 확인"""
         end_date = pipeline_result["end_date"]
-        pattern = f"pivoted_total_agg_wgt_{end_date}.csv"
+        pattern = f"weights_pivot_{end_date}.csv"
         files = list(OUTPUT_DIR.glob(pattern))
         assert len(files) >= 1, f"Expected {pattern} in output/"
 
@@ -315,20 +315,20 @@ class TestRealDataOutputCSVQuality:
 
     @staticmethod
     def _load_total_weights(end_date: str) -> pd.DataFrame | None:
-        files = list(OUTPUT_DIR.glob(f"total_aggregated_weights_{end_date}_test.csv"))
+        files = list(OUTPUT_DIR.glob(f"weights_factor_{end_date}_test.csv"))
         return pd.read_csv(files[0]) if files else None
 
     @staticmethod
     def _load_style_weights(end_date: str) -> pd.DataFrame | None:
-        files = list(OUTPUT_DIR.glob(f"total_aggregated_weights_style_{end_date}_mp_test.csv"))
+        files = list(OUTPUT_DIR.glob(f"weights_style_{end_date}_mp_test.csv"))
         return pd.read_csv(files[0]) if files else None
 
     @pytest.mark.skipif(not HAS_REAL_DATA, reason="No year-split parquet in data/")
     def test_total_weights_no_inf(self, pipeline_result) -> None:
-        """total_aggregated_weights에 무한대 값이 없는지 확인"""
+        """weights_factor에 무한대 값이 없는지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         for col in ["mp_ls_weight", "ls_weight", "factor_weight"]:
             if col in df.columns:
@@ -339,7 +339,7 @@ class TestRealDataOutputCSVQuality:
         """ticker 형식이 '000000 CH Equity' 패턴인지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         # 모든 ticker가 "CH Equity"로 끝나야 함
         ch_equity_mask = df["ticker"].str.endswith("CH Equity")
@@ -352,7 +352,7 @@ class TestRealDataOutputCSVQuality:
         """MP (집계) 행이 존재하는지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         mp_rows = df[df["style"] == "MP"]
         assert len(mp_rows) > 0, "No MP rows found in output"
@@ -362,7 +362,7 @@ class TestRealDataOutputCSVQuality:
         """출력에 다수의 스타일이 포함되는지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         styles = df["style"].unique()
         non_mp_styles = [s for s in styles if s != "MP"]
@@ -373,7 +373,7 @@ class TestRealDataOutputCSVQuality:
         """style_ls_weight 컬럼이 존재하는지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         assert "style_ls_weight" in df.columns, "style_ls_weight column missing"
 
@@ -382,7 +382,7 @@ class TestRealDataOutputCSVQuality:
         """style_ls_weight에 NaN이 없는지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         assert df["style_ls_weight"].notna().all(), "NaN found in style_ls_weight"
 
@@ -391,7 +391,7 @@ class TestRealDataOutputCSVQuality:
         """MP 행의 style_ls_weight가 mp_ls_weight와 동일한지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         mp_df = df[df["style"] == "MP"]
         if mp_df.empty:
@@ -409,7 +409,7 @@ class TestRealDataOutputCSVQuality:
         """MP 행의 롱/숏 비중이 합리적인지 확인"""
         df = self._load_total_weights(pipeline_result["end_date"])
         if df is None:
-            pytest.skip("total_aggregated_weights file not found")
+            pytest.skip("weights_factor file not found")
 
         mp_df = df[df["style"] == "MP"]
         if mp_df.empty:

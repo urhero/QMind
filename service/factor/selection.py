@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""팩터 선정 유틸리티 (Sprint 1).
+"""팩터 선정 유틸리티 (production mp 와 walk-forward 가 공유하는 도메인).
 
-Shrunk t-stat (James-Stein 계열) 랭킹, Hierarchical Clustering 기반
-Top-N 중복 제거, Newey-West 보정 t-stat 진단 지표를 제공한다.
+rank_score(t-stat / shrunk t-stat / CAGR), 상관 클러스터 기반 중복 제거,
+선정 히스테리시스, Newey-West 보정 t-stat 진단 지표, 그리고 이들을 묶은
+단일 진입점 select_factors() 를 제공한다.
 
 모든 함수는 IS 구간 데이터만 입력받아 IS 전용 규칙을 산출한다.
 OOS look-ahead 방지는 호출부에서 IS 슬라이스를 정확히 전달하여 보장한다.
@@ -354,3 +355,50 @@ def cluster_winner_median_dedup(
         len(factors), n_clusters_eff, len(final), median,
     )
     return final
+
+
+def select_factors(
+    monthly_rets: pd.DataFrame,
+    scores: pd.Series,
+    pp: Mapping,
+    top_n: int,
+    incumbents: set[str] | list[str] | None = None,
+    margin: float = 0.0,
+) -> list[str]:
+    """팩터 선정 단일 진입점 — production mp(evaluate_universe)와 walk-forward Tier 2 공용.
+
+    1) use_cluster_dedup=False: rank_score 상위 top_n 절단.
+       use_cluster_dedup=True : cluster_method 에 따라 winner_median / topn dedup.
+    2) margin>0 이고 incumbents 가 있으면 선정 히스테리시스. 집합이 실제로 바뀐 경우에만
+       반영한다 — 바뀌지 않았으면 원래 순서를 유지 (순서는 이후 ERC cov 열 순서에 영향).
+
+    Args:
+        scores: 후보 전체의 rank_score. **호출부가 rank_score 내림차순으로 정렬해 넘긴다**
+            (meta 정렬 순서 그대로 절단해 동점 순서를 여기서 다시 바꾸지 않는다).
+        pp: PIPELINE_PARAMS (use_cluster_dedup / cluster_method / n_clusters / per_cluster_keep).
+
+    두 경로가 이 함수를 공유하므로 선정 규칙이 갈라질 수 없다 (2026-09-16 통합).
+    """
+    if pp.get("use_cluster_dedup", False):
+        n_clusters = int(pp.get("n_clusters", 18))
+        per_cluster_keep = int(pp.get("per_cluster_keep", 3))
+        method = pp.get("cluster_method", "topn")
+        if method == "winner_median":
+            selected = cluster_winner_median_dedup(
+                monthly_rets, scores, n_clusters=n_clusters, per_cluster_keep=per_cluster_keep)
+        else:
+            selected = cluster_and_dedup_top_n(
+                monthly_rets, scores, n_clusters=n_clusters,
+                per_cluster_keep=per_cluster_keep, top_n=top_n)
+        logger.info("cluster_dedup applied (%s): %d factors selected from %d via %d clusters",
+                    method, len(selected), len(scores), n_clusters)
+    else:
+        selected = list(scores.index[:top_n])
+
+    if margin > 0 and incumbents:
+        adjusted = apply_selection_hysteresis(list(selected), scores, set(incumbents), margin)
+        if set(adjusted) != set(selected):
+            logger.info("selection_hysteresis: %d incumbent(s) retained (margin=%.2f)",
+                        len(set(adjusted) - set(selected)), margin)
+            selected = adjusted
+    return selected

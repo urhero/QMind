@@ -403,7 +403,7 @@ def _render_grid_book03(pdf_path, records, cover_fn):
 
     with PdfPages(pdf_path) as pp:
         cover_fn(pp)
-        top, bottom = 76.0, PAGE_H - 56.0
+        top = 76.0
         chart_h = svg_h * col_w / 320.0
         card_h = 30.0 + chart_h
         # 디자인 스크린샷 기준 컴팩트 스택 (행간 20px, 상단 정렬)
@@ -479,7 +479,8 @@ def generate_report(factor_abbrs, factor_names, style_names, factor_stats,
         cost_bps=float(PIPELINE_PARAMS["transaction_cost_bps"]))  # 폴백 금지 (2026-08-25 P3 동일 조치)
     factor_rets.loc[factor_rets.index[0]] = 0.0
     factor_rets = factor_rets.sort_index()
-    valid = factor_rets.columns[(factor_rets == 0).sum() <= 10]
+    # 0 수익률 월 필터 — mp/엔진과 동일 규칙 (첫 행 기준점 제외, config 값; 2026-09-16)
+    valid = factor_rets.columns[(factor_rets.iloc[1:] == 0).sum() <= PIPELINE_PARAMS["max_zero_return_months"]]
     factor_rets = factor_rets[valid]
 
     meta_df = (pd.read_csv(latest(OUTPUT_DIR / "meta_data.csv"), index_col=0)

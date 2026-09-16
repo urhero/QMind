@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
-"""팩터 롱-숏 수익률 행렬 결합 (restructure 2차 Phase 1).
+"""팩터 롱-숏 수익률 행렬 (universe / walk_forward / report_generator 공유 도메인).
 
-model_portfolio 오케스트레이터에 정의돼 있던 aggregate_factor_returns 를 공유
-도메인(service/factor/)으로 이주한다. universe/walk_forward/report_generator 가
-이 함수를 공유하므로 오케스트레이터 소유는 부적절했다(model_portfolio<->universe
-순환 유발). model_portfolio 는 하위호환을 위해 이 함수를 re-export 한다.
-본문은 글자보존(이동만).
+팩터별 라벨 프레임 -> 롱/숏 동일가중 포트폴리오 순수익률(비용 차감) -> (월 x 팩터) 행렬.
 """
 from __future__ import annotations
 

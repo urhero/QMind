@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Rich 콘솔 리포트 표현 계층 (restructure 2차 Phase 2).
+"""Rich 콘솔 리포트 표현 계층 (print_*_report).
 
-검증/진단 모듈에 혼재돼 있던 Rich 터미널 출력(print_*_report)을 한곳으로
-분리한다. 전부 부수효과(-> None, 콘솔 출력)이며 CSV/parquet 산출물 계약과 무관하다.
-본문은 글자보존(이동만). rich 는 각 함수 내부 lazy import 유지.
+전부 부수효과(-> None, 콘솔 출력)이며 CSV/parquet 산출물 계약과 무관하다.
+cp949 콘솔 호환을 위해 특수 유니코드 기호는 쓰지 않는다 (CLAUDE.md).
 """
 from __future__ import annotations
 

@@ -25,9 +25,7 @@ def validate_parquet_coverage(
     factor_drop_pct: float = 0.10,
     stock_drop_pct: float = 0.20,
 ) -> tuple[list[dict], pd.DataFrame, pd.DataFrame]:
-    """Pipeline-ready parquet의 월별·팩터별 커버리지를 검증한다.
-
-    연도별 분할 파일과 단일 파일 모두 지원한다.
+    """Pipeline-ready parquet(연도별 분할 factor_YYYY.parquet)의 월별·팩터별 커버리지를 검증한다.
 
     검증 항목:
       1. 빈 월 감지: 연속 날짜 간격이 gap_threshold_days 초과
@@ -87,7 +85,7 @@ def _validate_parquet_coverage_impl(
             warnings_list.append({
                 "level": "WARN",
                 "type": "FACTOR_DROP",
-                "message": f"{pd.Timestamp(dt).strftime('%Y-%m')}: factors {prev}→{curr} ({(prev-curr)/prev:.0%} drop)",
+                "message": f"{pd.Timestamp(dt).strftime('%Y-%m')}: factors {prev}->{curr} ({(prev-curr)/prev:.0%} drop)",
             })
 
     # ─── [3] 월별 종목 수 ───
@@ -99,7 +97,7 @@ def _validate_parquet_coverage_impl(
             warnings_list.append({
                 "level": "WARN",
                 "type": "STOCK_DROP",
-                "message": f"{pd.Timestamp(dt).strftime('%Y-%m')}: stocks {prev}→{curr} ({(prev-curr)/prev:.0%} drop)",
+                "message": f"{pd.Timestamp(dt).strftime('%Y-%m')}: stocks {prev}->{curr} ({(prev-curr)/prev:.0%} drop)",
             })
 
     # ─── [4] M_RETURN 정합성 ───

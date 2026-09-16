@@ -1,7 +1,7 @@
 # QMind 심층 분석 보고서
 
-> 최종 갱신: 2026-07-05
-> 분석 범위: 프로젝트 전체 (13개 프로덕션 모듈, 6개 테스트 모듈, 설정/데이터 파일)
+> 최종 갱신: 2026-09-16
+> 분석 범위: `service/` 전 모듈 + `config.py` / `main.py`. 테스트는 `tests/test_unit/` (`python -m pytest tests/test_unit/ -v`)
 
 ---
 
@@ -19,14 +19,18 @@ QMind(구 BOK — 원래 MXCN1A 전용으로 만들었다가 MXWO 로 확장, 20
 
 **하이브리드 구조: Pipeline 클래스 오케스트레이터 + 순수 함수 모듈**
 
-`ModelPortfolioPipeline` 클래스가 7단계를 순차 조율하되, 각 단계의 실제 로직은 6개 독립 모듈의 순수 함수에 위치한다. 클래스는 중간 결과물(`self.meta`, `self.weights` 등)을 인스턴스 변수로 보관하여 디버깅과 사후 분석을 지원한다.
+`ModelPortfolioPipeline` 클래스가 단계를 순차 조율하되, 각 단계의 실제 로직은 `service/pipeline/`·`service/factor/` 모듈의 순수 함수에 위치한다. 클래스는 중간 결과물(`self.meta`, `self.weights` 등)을 인스턴스 변수로 보관하여 디버깅과 사후 분석을 지원한다.
 
 ```
 main.py (CLI)
   └→ ModelPortfolioPipeline.run()  [오케스트레이터]
-       ├→ factor_analysis.py       [5분위 분석]
-       ├→ optimization.py          [가중치 계산]
-       └→ weight_construction.py   [롱/숏 수익률 + MP 비중 구성]
+       ├→ factor_analysis.py       [2]~[3] 5분위 분석 + 섹터 필터/라벨
+       ├→ universe.py              [4] L/S 수익률 행렬 + 선정
+       │    ├→ factor/factor_returns.py   aggregate_factor_returns (엔진·별첨과 공유)
+       │    └→ factor/selection.py        rank_score / select_factors (엔진과 공유)
+       ├→ optimization.py          [6] 가중치 (erc + TS 틸트 + style_cap)
+       ├→ weight_construction.py   [7] 종목 전개, 섹터 숏캡, 배포 배수, 피벗
+       └→ weight_history.py        회차 간 이력 (mp_weight_history/)
 ```
 
 ### 1.3 기술 스택
@@ -34,22 +38,23 @@ main.py (CLI)
 | 계층 | 기술 |
 |------|------|
 | 런타임 | Python 3.10.11, pipenv |
-| 데이터 | pandas (주력), numpy, polars/dask (보조) |
+| 데이터 | pandas (주력), numpy, scipy (상관 클러스터링), joblib (팩터별 병렬) |
 | DB | MS SQL Server via SQLAlchemy + pyodbc (ODBC Driver 17) |
-| 최적화 | NumPy 벡터연산, qpsolvers/OSQP (미래 확장용) |
+| 가중 | NumPy 벡터연산 (ERC = Spinu CCD 자체 구현, 외부 솔버 없음) |
 | I/O | pyarrow (parquet, zstd 압축, 연도별 분할), CSV |
 | CLI/UX | argparse, Rich (로깅, 프로그레스바, 테이블) |
-| 보고서 | matplotlib, reportlab (PDF) |
+| 보고서 | matplotlib (별첨 PDF), plotly (대시보드 HTML), openpyxl (별첨01 xlsx) |
 | 테스트 | pytest, pytest-cov, pytest-xdist |
 | 설정 | python-dotenv (.env) |
 
 ### 1.4 진입점 (Entry Points)
 
-**CLI 2개 커맨드** (`main.py`):
+**CLI 4개 커맨드** (`main.py`: download / mp / backtest / viz):
 
 | 커맨드 | 용도 | 호출 경로 |
 |--------|------|-----------|
 | `python main.py download <start> <end>` | SQL → parquet 다운로드 | `run_download_pipeline()` |
+| `python main.py viz [date] [--open]` | 기존 산출물 → HTML 대시보드 (read-only) | `build_dashboard()` |
 | `python main.py mp <start> <end>` | parquet → MP CSV 생성 | `run_model_portfolio_pipeline()` → `ModelPortfolioPipeline.run()` |
 | `python main.py mp test <file>` | 소량 데이터 테스트 모드 | 동일 경로, `test_file` 인자 활성 |
 | `python main.py mp --report` | PDF 보고서만 생성 후 종료 | `_generate_report()` → `return` (early return) |
@@ -64,7 +69,7 @@ main.py (CLI)
   `PIPELINE_PARAMS = {**_COMMON_PARAMS, **_UNIVERSE_PARAMS[BENCHMARK]}`. 미등록 값은 `KeyError`.
 - `service/paths.py`: `OUTPUT_DIR = output/{BENCHMARK}/` (구 "MXCN1A 만 루트 `output/`" 예외 제거), `HISTORY_DIR = OUTPUT_DIR/mp_weight_history/`.
 - 유니버스 종속 데이터는 전부 `data/{BENCHMARK}/` 폴더 (2026-09-09, 구 `{BENCHMARK}_` 접두어): 팩터/수익률 parquet, `country_map.parquet`, `bmwgt.parquet`,
-  `_bm_returns.csv`(대시보드 BM 오버레이), `_mp_target_gross.csv` / `_mp_multiplier.csv`(배포 배수 이력). 파일이 없으면 해당 기능은 no-op
+  `bm_returns.csv`(대시보드 BM 오버레이), `mp_target_gross.csv` / `mp_multiplier.csv`(배포 배수 이력). 파일이 없으면 해당 기능은 no-op
   (MXCN1A: BM 오버레이 생략). 거래세는 파일 유무가 아니라 `apply_country_tax` 로 명시 제어 (MXCN1A False —
   2026-09-02 재다운로드가 `MXCN1A_country_map.parquet` 를 만들자 HKG 등록 A주 4종에 홍콩 인지세가 붙는 것을 막기 위해 도입).
 - sharpe1 에서 추가된 키(`min_coverage_pct`, `sector_short_cap`, `mp_target_gross`, `is_window_months`, `deploy_step`, `bm_short_cap`, `weight_rebal_months`)는
@@ -85,7 +90,7 @@ main.py (CLI)
 | `apply_country_tax` | False (A주는 등록지 무관하게 본토 인지세 대상 — 등록지 세율표 부적합) | True (COUNTRY_TAX_BPS, 실측 회계 전용) |
 | 출력 경로 | `output/MXCN1A/` | `output/MXWO/` |
 | 유니버스 종속 데이터 | `data/MXCN1A/` (+ `mp_target_gross.csv`) | `data/MXWO/` (+ `mp_target_gross.csv`, `mp_multiplier.csv`, `bm_returns.csv`, `bmwgt.parquet`, `country_map.parquet`) |
-| 정본 실측 (배포 기준) | net Sharpe 0.703 / MDD -4.87% (미스케일, 거래세 미반영) | Sharpe 0.734 / MDD -1.80% / TE 1.04% (롱숏 ±20%, 거래세 반영) |
+| 정본 실측 (배포 기준, 2026-09-16 look-ahead 제거 후) | Sharpe 0.730 / MDD -0.76% / TE 0.51% (롱숏 ±7%, 거래세 미적용) | Sharpe 0.661 / MDD -1.99% / TE 1.03% (롱숏 ±20%, 거래세 반영) |
 
 공통 항목(style_cap 0.25, spread 0.05, ERC 모드, ts_mom_window 3, deploy_step 1.0 등)은 `config.py`의 `_COMMON_PARAMS`,
 유니버스별 항목은 `_UNIVERSE_PARAMS[BENCHMARK]` — `PIPELINE_PARAMS = {**_COMMON_PARAMS, **_UNIVERSE_PARAMS[BENCHMARK]}`.
@@ -121,10 +126,10 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
      │    [1] _load_data() + _prepare_metadata()           │
      │         │                                         │
      │         ├─ load_factor_parquet(validate=True)      │
-     │         │    ├─ 연도별 분할 → 자동 병합 (우선)     │
-     │         │    ├─ 단일 파일 fallback                │
-     │         │    └─ 10가지 무결성 검증                 │
-     │         ├─ Legacy: raw parquet + M_RETURN 분리     │
+     │         │    ├─ 연도별 분할 자동 병합 (분할 파일만)     │
+     │         │    ├─ categorical -> object 변환                │
+     │         │    └─ 9가지 무결성 검증                  │
+     │         ├─ mreturn.parquet 로드 (M_RETURN)        │
      │         ├─ Test: CSV 로드 + fld 파싱              │
      │         ├─ factor_info.csv merge (factorOrder)     │
      │         └─ M_RETURN merge (gvkeyiid + ddt 기준)   │
@@ -143,7 +148,7 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
      │    [3] filter_and_label_factors()                  │
      │         │                                         │
      │         ├─ 음의 팩터 스프레드(Q1<Q5) 섹터 제거      │
-     │         └─ 10% 임계값 기반 L(1)/N(0)/S(-1) 라벨    │
+     │         └─ 스프레드x5% 임계 기반 L(1)/N(0)/S(-1) 라벨    │
      │         │                                         │
      │    [4] evaluate_universe()                        │
      │         │                                         │
@@ -156,30 +161,28 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
      │         │                                         │
      │    [6] optimize_constrained_weights()               │
      │         │                                         │
-     │         ├─ mode="equal_risk_weight"(기본): 1/sigma  │
+     │         ├─ mode="erc"(기본): ERC + TS 모멘텀 틸트     │
      │         │    + 스타일 캡 재분배                       │
-     │         └─ mode="equal_weight"/"hardcoded" (구)      │
+     │         └─ equal_risk_weight/equal_weight/hardcoded  │
      │         │                                         │
      │    [7] _construct_and_export()                     │
      │         │                                         ▼
-     │         ├─ 종목별 동일가중 비중 산출         → aggregated_weights_*.csv
-     │         ├─ MP 집계 (전체 팩터 합산)         → total_aggregated_weights_*.csv
-     │         ├─ 스타일별 집계                    → total_aggregated_weights_style_*.csv
-     │         └─ 피벗 테이블 (Bloomberg용)        → pivoted_total_agg_wgt_*.csv
+     │         ├─ 종목별 동일가중 비중 + MP 합산    → weights_factor_*.csv
+     │         ├─ 섹터 숏캡 + 배포 배수(목표 gross)  (위 파일에 반영)
+     │         ├─ 스타일별 집계                    → weights_style_*.csv (+ weights_mp_* = MP 행만)
+     │         └─ 피벗 테이블 (Bloomberg용)        → weights_pivot_*.csv
 ```
 
 ### 2.2 단계별 데이터 변환 상세
 
 #### [1] _load_data + _prepare_metadata: 데이터 로딩
 
-3가지 경로 존재:
+2가지 경로 존재 (구 단일 파일 / raw parquet fallback 은 제거됨 — 분할 파일만 지원, 없으면 `FileNotFoundError`):
 
 | 경로 | 조건 | 특징 |
 |------|------|------|
-| **연도별 분할** | `data/{benchmark}/factor_YYYY.parquet` 파일 존재 | **최적 경로.** `load_factor_parquet()`이 자동 병합. merge 불필요, categorical→object 변환만 수행. `validate=True`로 10가지 무결성 검증 (시간순 정렬 `UNSORTED_LAG_GROUPS` 포함 — lag `shift(1)` 전제 보호) |
-| 단일 파일 (fallback) | 분할 파일 없고 `{benchmark}_factor.parquet` 존재 | 레거시 호환. 동일 `load_factor_parquet()` 함수가 자동 fallback |
-| Legacy raw | 위 둘 다 없고 `{benchmark}_{start}_{end}.parquet` 존재 | raw parquet에서 M_RETURN 분리 필요 |
-| Test | `test_file` 인자 전달 시 | CSV 로드, `fld` 컬럼에서 regex로 factorAbbreviation 파싱 |
+| **연도별 분할** | `data/{benchmark}/factor_YYYY.parquet` 파일 존재 | `load_factor_parquet()`이 자동 병합. merge 불필요, categorical→object 변환만 수행. `validate=True`로 9가지 무결성 검증 (시간순 정렬 `UNSORTED_LAG_GROUPS` 포함 — lag `shift(1)` 전제 보호) |
+| Test | `test_file` 인자 전달 시 | CSV 로드, `fld` 컬럼에서 regex로 factorAbbreviation 파싱, factor_info merge |
 
 **중요 변환**: Pipeline-ready parquet에서 로드 시 `categorical → object` 변환을 수행한다. 이유: `pivot_table`/`groupby`에서 `observed=False` 사용 시 categorical의 전체 카테고리 조합이 메모리를 폭발시키는 OOM 문제를 방지.
 
@@ -189,7 +192,7 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
 
 - `factor_info.csv`에서 factorAbbreviation, factorName, styleName, factorOrder 로드
 - Pipeline-ready parquet은 이미 factorOrder가 포함되어 있으므로 merge 생략
-- Legacy/Test 모드: `factor_info` merge + `sec != 'Undefined'` 필터
+- Test 모드(CSV): `factor_info` merge + `sec != 'Undefined'` 필터
 - **M_RETURN merge**: `gvkeyiid + ddt` 기본 키 + 가용한 추가 키(`ticker, isin, sec, country`) 사용
 
 **핵심 판단**: `already_merged = "factorOrder" in raw_data.columns`로 경로 분기
@@ -225,7 +228,7 @@ for factor_abbr in factor_abbr_list:
 
 **롤링 IS 윈도우** (`is_window_months`, MXWO 기본 48, 2026-07-28 채택): mp `run()`이
 `slice_recent_months()`로 merged 데이터를 최근 N개월+lag 기저 1개월로 잘라 규칙
-학습·선정·ERW 가중을 레짐 적응형으로 만든다. walk-forward 엔진은 동일 의미의
+학습·선정·ERC 가중을 레짐 적응형으로 만든다. walk-forward 엔진은 동일 의미의
 `is_window_months`를 Tier 1(merged_is)·Tier 2(ret_df_is) 슬라이스에 적용 (CLI
 `--is-window-months`, 미지정 시 config, 0=expanding 강제). **use_cluster_dedup 는
 MXWO 에서 off** — 롤링 IS 의 출렁이는 rank_score 분포에서 winner_median 의 전역
@@ -276,12 +279,12 @@ tmp["spread"] = tmp["Q1"] - tmp["Q5"]
 to_drop = tmp.loc[tmp["spread"] < 0, "sec"].tolist()
 ```
 
-**L/N/S 라벨 결정 (10% 임계값)**:
+**L/N/S 라벨 결정 (`spread_threshold_pct` 임계값, 현 0.05)**:
 ```python
 spread = Q1_mean - Q5_mean          # 섹터 제거 후 재계산 (기하평균)
 if not spread > 0: 팩터 탈락         # 유효성 가드 (2026-07; NaN 포함)
 
-thresh = spread * 0.10
+thresh = spread * spread_threshold_pct   # 현 0.05 (구 0.10)
 
 # 롱 확장: Q1부터 내려가며, 수익률이 (Q1 - thresh) 이상인 연속 분위
 q_mean["long"] = (q_mean["mean"] > Q1_mean - thresh).cumprod()
@@ -293,7 +296,7 @@ q_mean["short"] = (q_mean["mean"] < Q5_mean + thresh).abs()[::-1].cumprod()[::-1
 q_mean["label"] = q_mean["long"] + q_mean["short"]
 ```
 
-이 로직의 의미: Q1과 Q5 사이 팩터 스프레드의 10%를 허용 범위로 두고, Q1에 가까운 수익률을 보이는 분위도 롱에, Q5에 가까운 분위도 숏에 포함시킨다. 결과적으로 Q1=L, Q2~Q4=일부 L/N/S, Q5=S가 된다.
+이 로직의 의미: Q1과 Q5 사이 팩터 스프레드의 `spread_threshold_pct`(5%)를 허용 범위로 두고, Q1에 가까운 수익률을 보이는 분위도 롱에, Q5에 가까운 분위도 숏에 포함시킨다. 결과적으로 Q1=L, Q2~Q4=일부 L/N/S, Q5=S가 된다.
 
 **유효성 가드 (2026-07, EPSEstDispFY1C 사례)**: 섹터별 스프레드 체크(음수 섹터 제거)만으로는 남은 섹터를 **합산**한 전체 스프레드의 역전을 못 잡는다 (섹터별 양수라도 풀링+기하평균 재계산이 음수 가능). 전체 스프레드가 양수가 아니면(<=0 또는 NaN) "Q1이 Q5보다 좋다"는 전제가 깨진 죽은/역전 팩터이므로 탈락시킨다. 수학적으로 spread > 0 이면 Q1은 항상 롱, Q5는 항상 숏이 보장되므로 이 가드 하나로 한쪽 라벨 소멸(롱-only 시장 베타가 t-stat 랭킹 오염)까지 원천 차단된다. 구 동작(warning 후 유지)은 2026-06 데이터에서 롱-only 팩터가 MP에 선정되는 사고로 폐기.
 
@@ -307,20 +310,21 @@ ret_df = aggregate_factor_returns(filtered_data, kept_abbrs, backtest_start=pp["
 # 2. 첫 행 = 0 (시작 기준점)
 ret_df.loc[ret_df.index[0]] = 0.0
 
-# 3. 0이 10개 초과인 팩터 제거 (데이터 불충분)
-valid = ret_df.columns[(ret_df == 0).sum() <= 10]
+# 3. 0 수익률 월이 max_zero_return_months(10) 초과인 팩터 제거 (데이터 불충분)
+valid = ret_df.columns[(ret_df == 0).sum() <= pp["max_zero_return_months"]]
 
 # 4. CAGR(참조 컬럼) + rank_score 계산 — factor_ranking_method (기본 tstat)
 #    walk-forward Tier 2 와 동일한 factor.selection.compute_rank_score() 공유
 meta["cagr"] = ((1 + ret_df).cumprod().iloc[-1] ** (12 / months) - 1).values
 meta["rank_score"] = compute_rank_score(monthly_rets, ranking_method, style_map)
 
-# 5. 선정. MXWO 채택: use_cluster_dedup=False -> rank_score 순수 Top-50 절단
+# 5. 선정 — factor.selection.select_factors() 단일 진입점 (walk-forward Tier 2 와 공유, 2026-09-16)
+#    MXWO 채택: use_cluster_dedup=False -> rank_score 순수 Top-50 절단
 #    (롤링 IS의 불안정한 클러스터 구성에서 dedup이 좋은 팩터를 날림; 2026-07-28
 #     A/B on -0.12 / off +0.41. 중복 관리는 [6] ERC 가중이 담당)
-selected = meta_df.head(top_n)["factorAbbreviation"].tolist()   # MXWO 기본 경로
-# (옵션) use_cluster_dedup=True 시 — MXCN1A(main) 기본:
-#    winner_median=클러스터 1등 보호+전역 중위값 바닥 / topn=클러스터당 상위3 -> Top-N 절단
+#    MXCN1A: use_cluster_dedup=True, cluster_method=winner_median (1등 보호 + 전역 중위값 바닥)
+#    + 선정 히스테리시스 (incumbents = 직전 factor_styles raw_weight>0; test 모드 skip)
+selected = select_factors(monthly_rets, scores, pp, top_n, incumbents=prev_selected, margin=margin)
 ```
 
 **aggregate_factor_returns 내부 흐름**:
@@ -336,8 +340,8 @@ per-factor:
 
 **calculate_vectorized_return 핵심 로직**:
 - `pivot_table`으로 (날짜 × 종목) 행렬 생성
-- 리밸런싱 블록별 누적 성장률 계산 (`cumulative_growth_block`)
-- 턴오버 = abs(새 비중 - 이전 비중의 drift), 편입 매수/편출 매도 포함 (미보유 월 비중 = 0 처리; 2026-07 수정 — 구 버전은 연속 보유 종목만 계상해 비용 과소)
+- 당월 목표 비중을 당월 수익으로 표류시킨 `w_pre` 산출 (월간 리밸이라 구 "리밸 블록별 cumprod" 는 항등 — 2026-09-16 단순화, 출력 byte 동일)
+- 턴오버 = abs(다음 목표 비중 - `w_pre`), 편입 매수/편출 매도 포함 (미보유 월 비중 = 0 처리; 2026-07 수정 — 구 버전은 연속 보유 종목만 계상해 비용 과소)
 - 거래비용 = 10bp × 턴오버 (MXWO; 마지막 월은 다음 목표 비중이 없어 비용 0)
 
 #### [6] optimize_constrained_weights: 비중 결정
@@ -396,18 +400,19 @@ style_ls_weight = ls_weight * factor_weight / style_fw_sum
 **MP(모델 포트폴리오) 집계**:
 ```python
 # 전체 팩터의 mp_ls_weight 합산 → MP 행
-agg_w = weight_raw.groupby(["ddt", "ticker", "isin", "gvkeyiid"])[["mp_ls_weight", "factor_weight"]].sum()
-agg_w["style"] = "CEW"
+agg_w = weight_raw.groupby(["ddt", "ticker", "isin", "gvkeyiid", "sec"])[["mp_ls_weight", "factor_weight"]].sum()
+agg_w["style"] = "MP"
+agg_w = apply_sector_short_cap(agg_w, sector_short_cap)   # MXWO 0.15 (water-filling), MXCN1A None
 ```
 
 **출력 파일 5종**:
 
 | 파일 | 내용 | 용도 |
 |------|------|------|
-| `total_aggregated_weights_*.csv` | 팩터별 + MP 행이 모두 포함된 전체 가중치 | 감사 추적 |
-| `total_aggregated_weights_style_*.csv` | 스타일별 집계 | 스타일 노출 모니터링 |
-| `total_aggregated_weights_style_mponly_*.csv` | 위 파일의 style=MP 행만 (종목별 최종 롱/숏 비중) | 최종 비중 확인 |
-| `pivoted_total_agg_wgt_*.csv` | 피벗 형태 (행=종목, 열=스타일×팩터) | Bloomberg Optimizer 입력 |
+| `weights_factor_*.csv` | 팩터별 + MP 행이 모두 포함된 전체 가중치 | 감사 추적 |
+| `weights_style_*.csv` | 스타일별 집계 | 스타일 노출 모니터링 |
+| `weights_mp_*.csv` | 위 파일의 style=MP 행만 (종목별 최종 롱/숏 비중) | 최종 비중 확인 |
+| `weights_pivot_*.csv` | 피벗 형태 (행=종목, 열=스타일×팩터) | Bloomberg Optimizer 입력 |
 | `meta_data.csv` | 팩터 성과 지표 (CAGR, 순위) | 팩터 선정 근거 |
 
 ### 2.3 다운로드 파이프라인 (download 커맨드)
@@ -458,7 +463,7 @@ main.py
 | `.env` 파일 | DB 비밀번호, 서버 주소, 계정명 등 | `USER_PWD`, `SERVER_NAME`, `USER_NAME` 미설정 시 각각 warning 로그 + DB 연결 실패 |
 | `factor_info.csv` | 팩터 메타데이터 (200+ 팩터) | merge 실패 → 분석 불가 |
 | `data/hardcoded_weights.csv` | 프로덕션 고정 가중치 (10개 팩터) | hardcoded 모드 실패 |
-| `data/{benchmark}/factor_YYYY.parquet` | 연도별 분할 팩터 데이터 (Git 추적) | mp 커맨드 실패 (download 선행 필요). `load_factor_parquet()`이 단일 파일 fallback 지원 |
+| `data/{benchmark}/factor_YYYY.parquet` | 연도별 분할 팩터 데이터 (Git 추적) | mp 커맨드 실패 (`FileNotFoundError`, download 선행 필요) |
 | `data/{benchmark}/mreturn.parquet` | 시장 수익률 (Git 추적) | mp 커맨드 실패 |
 
 ### 3.4 영향 범위 (Blast Radius)
@@ -543,7 +548,7 @@ main.py
 `_generate_report()`는 보고서 생성 후 반환하고, `run()`에서 `return`으로 이후 단계를 스킵한다. (이전에는 `sys.exit(0)`이었으나 테스트 가능성을 위해 제거됨)
 
 #### 4.2.7 `(ret_df == 0).sum() <= 10` 필터
-수익률이 0인 날짜가 10개를 초과하는 팩터는 데이터 불충분으로 제거된다. 이 임계값은 하드코딩되어 있으며 설정 불가.
+수익률이 0인 월이 `PIPELINE_PARAMS["max_zero_return_months"]`(10)개를 초과하는 팩터는 데이터 불충분으로 제거된다. **2026-09-16 교정:** 카운트에서 첫 행(강제 기준점 0)을 제외한다 — 구 코드는 기준점 행까지 세서 설정값 10 의 실질 의미가 "실제 0 수익 월 9개 초과"였다. mp(`evaluate_universe`)·엔진 Tier 2·별첨(`report_generator`) 세 곳 모두 `iloc[1:]` 로 세고 config 값을 쓴다 (별첨은 구 코드가 10 을 직접 하드코딩했었음). 경계(정확히 10개월)에 걸린 팩터만 결과가 달라진다 — A/B 결과는 §6.2.2.
 
 #### 4.2.8 factor_weight의 neutral 제거
 ```python
@@ -593,17 +598,11 @@ def construct_long_short_df(labeled_data_df, backtest_start="2017-12-31"):
 
 ### 4.5 테스트 커버리지 현황
 
-| 모듈 | 테스트 수 | 커버되는 핵심 로직 | 미커버 영역 |
-|------|-----------|-------------------|------------|
-| `factor_analysis.prepend_start_zero` | 16 | 기본, NaN, Inf, 월말 처리 | - |
-| `factor_analysis.calculate_factor_stats_batch` | 4 | batch 5분위 분석, None 처리, 결과 순서 | - |
-| `optimization.optimize_constrained_weights` | ~10 | 기본, style_cap, 엣지케이스 | hardcoded 모드 미테스트 |
-| `factor_analysis.filter_and_label_factors` | ~8 | 섹터 제거, L/N/S 라벨, 엣지케이스 | - |
-| `weight_construction` | ~10 | L/S 분리, 동일가중, 수익률 계산 | - |
-| `model_portfolio` | E2E 16 | 전체 파이프라인 | 개별 private 메서드 단위 테스트 없음 |
-| `parquet_io` | 27 | save/load roundtrip, 연도별 분할, fallback, 10가지 검증 | - |
-| `download_factors` | 0 | - | 전체 미커버 (DB 의존) |
-| `report_generator` | 0 | - | 전체 미커버 |
+`tests/test_unit/` 28개 파일 · 335 케이스 (2026-09-16, `python -m pytest tests/test_unit/ -v`, 약 10초).
+계약 테스트로 고정한 것: 결정적 출력(`test_determinism`), IS/OOS 경계(`test_oos_purity`),
+선정 단일 진입점·CLI parity(`test_select_factors`), 섹터 숏캡 water-filling(`test_bm_short_cap`, `test_stock_level`),
+ERC 솔버 RC 균등(`test_optimize_constrained_weights`). 통합 테스트(`tests/test_integration/`)는 실데이터·DB 의존이라
+로컬 전용. 미커버: `download_factors`(DB 의존), `report_generator`(PDF 렌더).
 
 ### 4.6 성능 특성
 
@@ -670,7 +669,7 @@ repeat (최대 10회):
 - **Factor-Level Backtest**: 종목(stock-level) MP까지 내려가지 않고, 팩터 수익률(net-of-cost) × 팩터 가중치로 포트폴리오 수익률을 산출
 - **거래비용 (중요)**: `calculate_vectorized_return()`이 팩터 내부 매매(연속 보유 종목 비중 변화 + 편입 매수/편출 매도, 2026-07 수정)를 전액 차감한다. 팩터 간 비중변경(inter-factor) 매매는 '팩터수익 × 비중' 구조상 미계상(과소 방향), 반대로 실거래는 MP 합산 후 1회 매매라 교차 팩터 netting 을 무시하는 팩터별 전액 계상은 과대 방향 — MP-level 실측 netting ratio 근거로 `backtest_cost_multiplier` 기본 **0.6** (10bp×0.6=6bp — 선정 입력용 근사; 구 2.0 은 편입/편출 누락 보정치, 1.0 은 netting 무시 과대). 적용 지점: `walk_forward_engine._resolve_backtest_cost_bps()` → `run()`의 `pp`. **mp(운영)는 multiplier 영향 없음**(10bp 전액; 단 턴오버 수정은 운영 factor return/랭킹에도 적용됨)
 - **MP-level 실비용 (결정판)**: `research/mp_level_cost_backtest.py`가 종목단 MP 비중을 합산해 실제 매매 턴오버(연 ~2.8x one-way)에 종목비용(transaction_cost_bps)을 부과한 수치를 제공 — **netting ratio 0.574** (실비용 = 팩터별 전액 계상의 ~57%; scale-invariant, bp 수준 무관). 상세: [docs/experiments/mp_level_cost_20260703.md](docs/experiments/mp_level_cost_20260703.md)
-- **가중 모드**: 백테스트는 config `optimization_mode`(기본 equal_risk_weight)를 그대로 사용. hardcoded 지정 시에만 equal_weight 로 자동 변환
+- **가중 모드**: 백테스트는 config `optimization_mode`(기본 erc)를 그대로 사용 (`weight_kwargs_from()` 단일 출처). hardcoded 지정 시에만 equal_weight 로 자동 변환
 
 ### 6.2 계층적 리밸런싱 (Tiered Rebalancing)
 
@@ -712,6 +711,26 @@ Tier 3 (매월): OOS 수익률 조회
 
 **남은 병목(무손실로는 추가 단축 어려움):** IS rank/cut(윈도우별 필수), Tier 2 가중치 최적화/레코드 조립. 클러스터링(corr+linkage)은 호출당 ~1-2초로 병목 아님. 검토했으나 기각: rule-application 루프 병렬화(순이득 0 — 루프가 병목 아니었고 full fdf pickle 비용이 상쇄), Tier2 클러스터링 근사 캐시(<1분 이득 + 결과 변경이라 byte-identical 위배).
 
+### 6.2.2 Tier 1 계산 구간 절단 + zero-filter 기준점 제외 (2026-09-16)
+
+4. **Tier 1 horizon 절단** (`_apply_rules_and_aggregate(horizon=...)`): 각 Tier 1 은 OOS `i .. i+factor_rebal_months-1` 만 소비하는데 구 코드는 매번 parquet **전 기간**의 팩터 L/S 수익률을 계산했다. 라벨 프레임을 `ddt <= all_dates[min_is + i + factor_rebal_months]` (턴오버 lookahead `w.shift(-1)` 분 +1) 로 잘라 미래 구간 계산을 생략한다. 이것은 성능만의 변화가 아니다 — `aggregate_factor_returns` 가 **어느 한 달이라도 NaN 인 팩터 열을 통째로 버리므로**(`dropna(axis=1)`), 구 코드는 "미래 월에 롱 또는 숏 분위가 비는 팩터"를 현재 시점 선정에서 제외하는 look-ahead 를 갖고 있었다. 절단 후에는 그 시점까지의 데이터로만 판단한다. 마지막 Tier 1 의 horizon 은 데이터 끝이라 `factor_returns_matrix_*.csv`(viz 용) 는 전 기간 그대로다.
+   byte-identical 이 아닌 이유 두 가지: (a) 위 look-ahead 제거 (선정 집합이 달라지는 달이 있을 수 있음), (b) numpy pairwise 합산의 ULP 차이(배열 길이가 바뀌면 덧셈 묶음이 달라져 1e-16 수준). 회귀 검증은 byte-diff 대신 허용오차 비교(`scratchpad/compare_ab.py`, 1e-12) 로 한다.
+5. **zero-filter 기준점 제외** — §4.2.7.
+
+A/B 실측 (실데이터, 2026-08-31 기준일, 허용오차 비교):
+
+| 구성 | MXWO factor-level CEW Sharpe | MXWO 정본(stock-level) Sharpe / MDD / Calmar | 선정 집합 변경 월 |
+|---|---|---|---|
+| 구 코드 | 0.862 | 0.706 / -1.80% / 0.401 | - |
+| zero-filter 교정만 (horizon 절단 off, 격리 실행) | 0.862 (동일) | 동일 | 0 / 99 |
+| 교정 + horizon 절단 (현행) | 0.826 | 0.661 / -1.99% / 0.342 | 23 / 99 |
+
+- **zero-filter 교정은 MXWO 에서 효과 0** (경계 팩터 없음). 차이는 전부 horizon 절단 = look-ahead 제거분이다. 구 코드에서 전 기간 제외되던 IO_NAT 가 새로 선정 후보에 들어오고, 23개월의 선정 집합이 바뀐다. **구 정본 0.706 은 "미래에 롱/숏이 비는 팩터" 를 미리 빼는 look-ahead 로 소폭 부풀려져 있었다** — 현행이 정직한 수치이며 **채택 유지** (look-ahead 가 있는 구 수치로 되돌릴 이유 없음). ULP 수준 차이(1e-12 이하)는 관측되지 않았다 (모든 차이가 선정 변화에서 옴).
+- **새 정본 (배포 기준, 2018-06~2026-08 99개월)**: MXWO Sharpe 0.661 / IR 0.657 / CAGR +0.68% / MDD -1.99% / Calmar 0.342 / TE 1.03% / 턴오버 1.6x. MXCN1A (2012-12~2026-08 165개월, 롱숏 ±7%) Sharpe 0.730 / MDD -0.76% / Calmar 0.488 / TE 0.51%.
+- MXCN1A: 정본 Sharpe 0.729 -> 0.730 (중립). expanding IS + winner_median + 히스테리시스가 경로 의존적이라 165/165 개월의 선정 집합이 달라지지만 성과는 같다 (팩터 교체: AdjEPSNumRevFY1C·Alpha12M6MPChg 퇴장 / 8WChgFwd12MEPS·AssetTurn·EPSSurpC·PAdjChg1YCF·RONA 진입).
+- 실행 시간: MXWO 백테스트 15.4분 (구 방식 격리 실행 16.0분, 동일 머신) — 절감은 약 1분으로 예상(30%)보다 작다. 병목이 aggregate 가 아니라 IS rank/cut 과 Tier 2 라는 §6.2.1 진단과 일치.
+- mp(운용) 산출물은 horizon 개념이 없어 영향 없음 — 2026-08-31 4종 + history byte-identical.
+
 ### 6.3 과적합 위험 지점
 
 | 단계 | 과적합 위험 | 이유 |
@@ -739,7 +758,7 @@ Tier 3 (매월): OOS 수익률 조회
 OOS 구간에서 3개 포트폴리오의 성과(CAGR, MDD)를 동시 비교:
 - A. EW_All: 전체 유효 팩터 동일가중 (시장/팩터 베타)
 - B. EW_Top50: Top-50 후보군 동일가중 (1차 필터링 실력)
-- C. Constrained EW: Top-N 동일가중 + style_cap(25%) 재분배 (제약 부가)
+- C. Constrained EW (= 본전략 MP): 선정 팩터에 config 가중(ERC + TS 틸트) + style_cap(25%) 재분배. 라벨 "EW" 는 1/N 시절의 관례
 
 | 패턴 | 의미 |
 |------|------|
@@ -747,8 +766,8 @@ OOS 구간에서 3개 포트폴리오의 성과(CAGR, MDD)를 동시 비교:
 | B > C > A | CONSTRAINT_DRAG -- style_cap 제약이 OOS CAGR을 깎음. 과적합 아님(학습 가중치 없는 결정론적 제약): 수익 일부를 내주고 변동성/MDD를 낮추는 트레이드오프. 구 라벨 `OPTIMIZATION_OVERFIT` |
 | A > B | FILTER_OVERFIT -- rank_score 기반 Top-50 선정 자체가 과거 우연 |
 
-> 현재 C는 학습된 가중치가 아니라 **deterministic style_cap 재분배**일 뿐이다
-> (공분산/MC 최적화는 커밋 `8dfb64e`에서 제거됨).
+> C 의 가중은 IS cov 기반 ERC(학습 파라미터 없음, 대각 수축 0.2) + 결정론적 style_cap 재분배다
+> (종목단 공분산/MC 최적화는 커밋 `8dfb64e`에서 제거됨).
 
 **2순위: OOS Percentile Tracking (최종 팩터 생존율)**
 
@@ -772,8 +791,8 @@ Top-50이 아닌, **실제로 비중이 할당된 최종 팩터**에만 적용.
 ### 6.5 방어 로직
 
 - **MIN_REQUIRED_FACTORS = 5**: 유효 팩터가 5개 미만이면 Tier 2 스킵, 이전 가중치 유지
-- **배포 = 목표 비중 (스무딩 제거)**: 매 회차 optimizer 목표 비중(Top-N 동일가중 + style_cap, 합 1.0)을 그대로 배포한다. factor 키를 정렬한 뒤 합 1.0 으로 재정규화(결정적·byte 안정), 탈락 factor 는 즉시 제거. production `mp`·백테스트 동일. (과거 turnover 스무딩(절대스텝 밴드형)은 월간 turnover 를 ~32% 줄였으나 무비용 가정 OOS 에서 Sharpe 개선이 없어 **제거**됨 — 실험 기록: [`smoothing_cost_experiment_20260612.md`](docs/experiments/smoothing_cost_experiment_20260612.md), [`absolute_step_attribution_20260607.md`](docs/experiments/absolute_step_attribution_20260607.md). turnover 절감은 아래 선정 히스테리시스로 달성.)
-- **선정 히스테리시스 (production 적용, MXWO `selection_hysteresis=0.25`; MXCN1A는 0.5)**: 챌린저가 직전 보유 factor 를 rank_score 격차 margin 이상 이겨야 교체 (`factor.selection.apply_selection_hysteresis`, mp·백테스트 공유). 팩터단 전환비용 6-way 비교에서 히스테리시스는 **턴오버 -64% + gross CAGR +0.6~0.7%p 동시 개선** — [`smoothing_cost_experiment_20260612.md`](docs/experiments/smoothing_cost_experiment_20260612.md). `evaluate_universe` 가 `weight_history.load_prev_selection()` (직전 `factor_styles_*.csv` 의 raw_weight>0 = 직전 선정 집합) 으로 incumbents 를 로딩해 동일 함수 적용. test 모드는 prod history 오염 방지 skip. backtest CLI 는 `--selection-hysteresis` (미지정 시 config 값). 엔진 Tier 1 이 선정 incumbency 를 carry (기존 6개월 리셋 -> production 불일치 해소, Tier 2 는 규칙 갱신 시 강제 재실행).
+- **배포 = 목표 비중 (스무딩 제거)**: 매 회차 optimizer 목표 비중(ERC/틸트 가중 + style_cap, 합 1.0)을 그대로 배포한다 (`deploy_step=1.0`; <1 이면 `blend_deploy_weights` 부분 조정). factor 키를 정렬한 뒤 합 1.0 으로 재정규화(결정적·byte 안정), 탈락 factor 는 즉시 제거. production `mp`·백테스트 동일. (과거 turnover 스무딩(절대스텝 밴드형)은 월간 turnover 를 ~32% 줄였으나 무비용 가정 OOS 에서 Sharpe 개선이 없어 **제거**됨 — 실험 기록: [`smoothing_cost_experiment_20260612.md`](docs/experiments/smoothing_cost_experiment_20260612.md), [`absolute_step_attribution_20260607.md`](docs/experiments/absolute_step_attribution_20260607.md). turnover 절감은 아래 선정 히스테리시스로 달성.)
+- **선정 히스테리시스 (production 적용, MXWO `selection_hysteresis=0.25`; MXCN1A는 0.5)**: 챌린저가 직전 보유 factor 를 rank_score 격차 margin 이상 이겨야 교체 (`factor.selection.select_factors` 단일 진입점 — 절단/dedup/히스테리시스를 mp·백테스트가 같은 함수로 수행, 2026-09-16 통합; 집합이 실제로 바뀐 경우에만 반영해 바뀌지 않으면 원래 순서 유지). 팩터단 전환비용 6-way 비교에서 히스테리시스는 **턴오버 -64% + gross CAGR +0.6~0.7%p 동시 개선** — [`smoothing_cost_experiment_20260612.md`](docs/experiments/smoothing_cost_experiment_20260612.md). `evaluate_universe` 가 `weight_history.load_prev_selection()` (직전 `factor_styles_*.csv` 의 raw_weight>0 = 직전 선정 집합) 으로 incumbents 를 로딩해 동일 함수 적용. test 모드는 prod history 오염 방지 skip. backtest CLI 는 `--selection-hysteresis` (미지정 시 config 값). 엔진 Tier 1 이 선정 incumbency 를 carry (기존 6개월 리셋 -> production 불일치 해소, Tier 2 는 규칙 갱신 시 강제 재실행).
 
 ### 6.5.1 mp 가중치 history (`output/{BENCHMARK}/mp_weight_history/`)
 
@@ -786,7 +805,7 @@ Top-50이 아닌, **실제로 비중이 할당된 최종 팩터**에만 적용.
 | `style_totals_{date}.csv` | `save_style_totals` | `not test_file` | style 단위 raw/prev/new 합계 + delta + factor_count + factors (`;` 구분 문자열). |
 
 **raw / prev / new(=배포) 의미** (스무딩 제거, 메모리 구분 없음)
-- `raw` : 이번 회차 optimizer 산출 = **목표** (Top-N 동일가중 + style_cap, 합 1.0)
+- `raw` : 이번 회차 optimizer 산출 = **목표** (ERC/틸트 가중 + style_cap, 합 1.0)
 - `prev`: 직전 회차 **배포** 가중치 (`factor_weights_{prev_date}.csv` 로딩)
 - `new` (= 배포): `raw` 를 factor 키 정렬 후 합 1.0 으로 재정규화한 값 = **목표 그대로 배포**(스무딩 제거). `factor_weights_{date}.csv` 로 저장돼 다음 회차 prev(전월대비 delta 리포트용). 탈락 factor 는 배포에서 즉시 제거. Bloomberg 입력은 이 `new`.
 
@@ -803,7 +822,7 @@ python main.py backtest <start> <end> [옵션]
   --min-is-months        최소 IS 기간 (기본: 36)
   --factor-rebal-months  Tier 1 리밸런싱 주기 (기본: 6)
   --weight-rebal-months  Tier 2 리밸런싱 주기 (기본: 3)
-  --top-factors          상위 팩터 수 (기본: 50; cluster_method=topn 일 때만 유효)
+  --top-factors          상위 팩터 수 (미지정 시 config top_factor_count; dedup off 또는 topn 에서 유효)
   --selection-hysteresis 선정 히스테리시스 margin (미지정 시 config 값)
   --cluster-method       topn / winner_median (미지정 시 config 값)
   --style-cap            스타일 합계 상한 (미지정 시 config 0.25; 1.0=캡 해제)
@@ -812,7 +831,8 @@ python main.py backtest <start> <end> [옵션]
 
 ### 6.7 실제 실행 결과
 
-백테스트 결과 및 과적합 진단 상세는 [`docs/backtest_results_2009_2026.md`](docs/backtest_results_2009_2026.md) 참조.
+최신 결과는 `backtest` 산출물(`output/{BENCHMARK}/<date>/dashboard_<date>.html`, `overfit_diagnostics_<date>.csv`, `stock_level_series_<date>.csv`)로 본다.
+구 정적 보고서(MXCN1A, 2026-03 기준)는 [`docs/archive/backtest_results_2009_2026.md`](docs/archive/backtest_results_2009_2026.md).
 
 **현재 기본 설정 (config.py):**
 - `optimization_mode = "erc"` (cov 48M + 대각수축 0.2 + Spinu CCD; 수축 0.2는 2026-08-07 전구간 스윕 채택 — mxwo_sharpe_ladder_20260729.md 7차)
@@ -826,21 +846,21 @@ python main.py backtest <start> <end> [옵션]
 - **성과 원천(팩터 기여도) 상설화** (2026-08-28): `_assemble_oos_record` 가 매 OOS 월 `contributions = {f: 비중 x 당월수익}` (합 = oos_return) 을 기록하고, stitcher 가 `contribution_history` 로 직렬화 → `factor_contrib_{기준일}.csv` (weight_history 와 동일 결정적 포맷). 대시보드 '연도별 성과 원천' 섹션: 연도x스타일 히트맵(`contrib_style_heatmap_fig`) + 연도별 상/하위 기여 팩터 표. **핵심 함정: 사후 재구성 금지** — 저장된 `factor_returns_matrix`(최종 윈도우 규칙) x 비중이력 근사는 look-ahead 로 왜곡됨 (corr 0.676, 2025년 기여 2배 과대 실측). 반드시 엔진이 당시 규칙으로 기록한 값 사용. 팩터단(배포 배수 전) 기준.
 - **별첨 북 = 운용 규칙 기준** (2026-08-27): `mp --report` 가 48M 롤링 IS 창으로 운용 규칙(섹터 제거·L/S 라벨)을 별도 fit 해 `live_rules` 번들로 `generate_report()` 에 전달하고, 북은 그 규칙을 **전체 이력 5분위 통계에 직접 매핑**해 차트를 그린다 (재학습 금지 — walk-forward `_apply_rules_and_aggregate` 와 동일 원칙). 결과: 별첨 팩터 집합 = 운용 유효 팩터 집합 (구 방식은 전체 이력으로 재-fit 한 통과 집합 ∩ meta_data 교집합만 실려, LogMktCap 등 운용 유효 팩터 3개가 북에서 빠지는 불일치 존재). 차트의 수익 측정 기간만 전체 이력(참고용)이고 규칙·정렬(③ L-S CAGR)은 모두 운용 48M. 별첨01 Factor_Info 시트도 북과 동일 집합으로 필터 — **별첨 4종 = 271개·동일 순서 통일** (운용 273 중 stdRR36M·PM1M 은 전 기간 커버리지<10% 로 별첨 전체 미수록). `live_rules=None` 이면 구 방식 폴백. 부수 교정: 구 방식은 `filter_and_label_factors` 를 기본 인자(threshold 0.10, tstat None)로 호출해 운용 파라미터(0.05 등)와도 어긋났었음
 - `COUNTRY_TAX_BPS` (국가별 증권거래세, 2026-08-12 도입): 수수료 10bp 와 **별도**로 법정 거래세를 매수/매도 방향별 부과. GBR 50/0, IRL 100/0, FRA 40/0, ESP 20/0, ITA 20/0, HKG 10/10, ZAF 25/0, USA 0/0.206 (bp), 그 외 면세. 적용 지점은 `mp_level_cost_backtest` **실측 전용** — factor-level 선정 입력에는 미반영 (선정 규칙 불변, 성과 회계만 정직화). 구현: `service/pipeline/transaction_tax.py`. 핵심은 턴오버의 **부호 있는 델타 보존** (Δw>0=매수/숏커버, Δw<0=매도/숏진입) — 영국 SDRT 같은 매수 편측 세목이 공매도 진입엔 안 붙고 커버에만 붙는 구조가 자동 처리됨. `cost_stock`(수수료)/`tax_stock`(세금) 분리 계상으로 netting ratio 진단 유지. 영향: net 0.840→0.739 (연 세금 23.5bp, 편도 6.19bp)
-- `factor_ranking_method = "tstat"` (기본; Sprint 1-A `"shrunk_tstat"` 실험 옵션 추가됨)
-- `use_cluster_dedup = False` (**MXWO: dedup off + 순수 Top-50** — 2026-07-28 A/B; MXCN1A(main)는 True/winner_median)
+- `factor_ranking_method = "tstat"` (기본; `"shrunk_tstat"` / `"cagr"` 는 실험 옵션)
+- `use_cluster_dedup = False` (**MXWO: dedup off + 순수 Top-50** — 2026-07-28 A/B; MXCN1A는 True/winner_median)
 - `is_window_months = 48` (롤링 IS; MXCN1A는 expanding)
 - `selection_hysteresis = 0.25` / `weight_rebal_months = 1` / `transaction_cost_bps = 10.0`
 - `min_coverage_pct = 0.10` / `sector_short_cap = 0.15` / `spread_threshold_pct = 0.05`
 - 데이터 시작 2015-06-30 (MXWO parquet 커버리지)
 
-**Sprint 1 개선 (1-B 는 production 적용, 1-A/1-C 는 실험/진단용):**
-- **1-A `shrunk_tstat`** — `service/factor/selection.py:compute_shrunk_tstat()`
+**선정 유틸리티 (`service/factor/selection.py`; 클러스터 dedup 은 MXCN1A production 적용, shrunk_tstat / Newey-West 는 실험·진단용):**
+- **`shrunk_tstat`** — `compute_shrunk_tstat()`
   James-Stein 계열 shrinkage로 팩터 t-stat을 스타일 그룹 평균 쪽으로 `lambda` 만큼 축소.
   `lambda = var_within_style / (var_within_style + var_between_styles)` — 데이터 주도 결정.
 - **1-B `use_cluster_dedup`** — IS 구간 팩터 L-S 수익률 상관으로 `1 - |corr|` distance,
   `scipy.cluster.hierarchy.linkage(method="average")`, `fcluster(maxclust=n_clusters)`. IS 전용(OOS look-ahead 방지).
   `cluster_method`로 압축 규칙 선택:
-  - ⚠ **MXWO(이 브랜치)는 dedup 자체가 off** (`use_cluster_dedup=False`) — 아래는 MXCN1A(main) 기본 및 옵션 설명.
+  - ⚠ **MXWO 는 dedup 자체가 off** (`use_cluster_dedup=False`) — 아래는 MXCN1A 기본 및 옵션 설명.
   - **`winner_median`(MXCN1A production 기본) — `cluster_winner_median_dedup()`**: 클러스터당 rank_score 상위 `per_cluster_keep` 후보 중 **클러스터 1등 무조건 통과**(분산 보장, 최소 n_clusters개) + 나머지는 **전역 rank_score 중위값 이상**만 통과. 고정 Top-N 없음(~20~40개 가변). A/B 백테스트: topn 대비 OOS Sharpe 0.73→0.79, Calmar 0.43→0.57, MDD -5.1→-4.0%, 보유 ~41→~26개. ([2026-06-30 A/B](#))
   - `topn` — `cluster_and_dedup_top_n()`: 클러스터별 상위 `per_cluster_keep` 통과 후 rank_score 상위 `top_factor_count`(50) 절단.
 - **1-C Newey-West 진단** — `compute_newey_west_tstat()`
@@ -850,7 +870,7 @@ python main.py backtest <start> <end> [옵션]
 - `output/{BENCHMARK}/<date>/walk_forward_results_<date>.csv` -- OOS 월별 Constrained EW / EW / EW_All / EW_Top50 수익률 + 누적 수익률 (컬럼 prefix `cew_*`)
 - `output/{BENCHMARK}/<date>/overfit_diagnostics_<date>.csv` -- 과적합 진단 5개 지표 요약
 - `output/{BENCHMARK}/<date>/walk_forward_weight_history_<date>.csv` -- 월별 팩터 가중치 이력 (date x factor; viz 비중 추이/회전율용)
-- `docs/backtest_results_2009_2026.md` -- 136개월 OOS 분석 보고서
+- `docs/archive/backtest_results_2009_2026.md` -- 구 136개월 OOS 분석 보고서 (MXCN1A, 2026-03 기준 정적)
 
 **재현성 (결정적 출력, 2026-06-24):** 위 두 CSV(`walk_forward_results.csv`,
 `walk_forward_weight_history.csv`)는 동일 코드라면 실행마다 byte-identical 하다.
@@ -891,7 +911,7 @@ CLAUDE.md 의 코드 변경 검증 절차(aggregated_weights before/after diff)�
 
 ### 7.2 스냅샷 파일 선택 규칙
 
-`find_latest_weights_file()`: `total_aggregated_weights_*.csv` 중 `_style` 변형 제외,
+`find_latest_weights_file()`: `weights_factor_*.csv` 중 `_style` 변형 제외,
 파일명에서 `(\d{4}-\d{2}-\d{2})` 파싱 -> 최대 날짜(또는 인자 `end_date`). 동일 날짜 복수 시
 mtime 최신 우선. 운영(무접미사)/`_test`/`_test_test_data` 모두 포함 — 접미사 무관.
 
@@ -915,10 +935,10 @@ KPI 카드(CAGR/MDD/Sharpe/Calmar/승률/초과CAGR)는 `build_kpis()`에서 **�
 - **낙폭 구간 분석**: `compute_drawdown_episodes(cum, min_depth=0.01)`(dashboard_data)가 곡선에서 underwater episode(고점->저점->회복)를 추출 — 깊이(%) + peak/trough/recovery 시점 + 하락(peak->trough)·회복(trough->recovery)·전체 기간(개월), 미회복 시 ONGOING. `_drawdown_episodes_section()`이 EW_All/EW_Top50/CEW 곡선별 표(깊은 순, 1% 이상)로 렌더. 정적 산출물 `docs/experiments/drawdown_analysis.md`(특정 설정/기간)와 달리 **현재 OOS 곡선에서 실시간 계산**이라 숫자는 다름.
 - **QC 결과페이지 참고 컴포넌트(곡선 기반, read-only)**: ① `monthly_returns_table()`→`monthly_returns_heatmap_fig()` 연×월 수익률 히트맵(+연간 복리 'Year' 열, 상승=green/하락=red zmid=0), ② `extended_stats()` 확장 통계(Sortino/연변동성/최고·최저월/상승월%/왜도/최장연속손실)+`relative_metrics(bench="ew_return")` 벤치(선정 EW) 대비 Beta/Alpha(연)/추적오차/정보비율 → `_backtest_stats_card()` KPI 그리드, ③ `rolling_sharpe(window=12)`→`rolling_sharpe_fig()`. 전부 `walk_forward_results.csv` 월별 수익률만 소비 (전략/스키마 무수정).
 - 한글 차트 타이틀은 plotly JSON 내에서 `\uXXXX` 이스케이프로 저장됨(렌더링 정상). raw grep 시 주의.
-- Bloomberg 핸드오프 파일 `pivoted_total_agg_wgt_*.csv`는 읽지도 수정하지도 않음.
+- Bloomberg 핸드오프 파일 `weights_pivot_*.csv`는 읽지도 수정하지도 않음.
 ### 7.5 섹터 분해 (read-only parquet join)
 
-`total_aggregated_weights_*.csv`에는 `sec` 컬럼이 없다. `load_sector_map()`이 소스
+`weights_factor_*.csv`에는 `sec` 컬럼이 없다. `load_sector_map()`이 소스
 `data/{benchmark}/factor_<연도>.parquet`을 `load_factor_parquet()`로 읽어(스냅샷 연도만),
 해당 `ddt` 행에서 `gvkeyiid -> sec` 매핑을 만들고, `sector_net_weights()`가 종목 순비중
 (`mp_ls_weight`)을 섹터로 묶는다. 파이프라인/출력 스키마는 건드리지 않는다(read-only).

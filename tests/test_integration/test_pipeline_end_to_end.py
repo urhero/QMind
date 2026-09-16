@@ -125,8 +125,8 @@ class TestPipelineDataValidation:
             test_file=str(TEST_DATA_PATH),
         )
 
-        # total_aggregated_weights 파일 확인
-        weight_files = list(TEST_OUTPUT_DIR.glob("total_aggregated_weights*_test*.csv"))
+        # weights_factor 파일 확인
+        weight_files = list(TEST_OUTPUT_DIR.glob("weights_factor*_test*.csv"))
         if weight_files:
             weights_df = pd.read_csv(weight_files[0])
 
@@ -150,8 +150,8 @@ class TestPipelineDataValidation:
             test_file=str(TEST_DATA_PATH),
         )
 
-        # total_aggregated_weights 파일 확인
-        total_weight_files = list(TEST_OUTPUT_DIR.glob("total_aggregated_weights*_test*.csv"))
+        # weights_factor 파일 확인
+        total_weight_files = list(TEST_OUTPUT_DIR.glob("weights_factor*_test*.csv"))
         if total_weight_files:
             weights_df = pd.read_csv(total_weight_files[0])
 
@@ -185,7 +185,7 @@ class TestPipelineOutputConsistency:
         # 예상되는 출력 파일 패턴들
         expected_patterns = [
             "aggregated_weights*_test*.csv",
-            "total_aggregated_weights*_test*.csv",
+            "weights_factor*_test*.csv",
             "meta_data*.csv",
         ]
 
@@ -271,7 +271,7 @@ class TestStyleLsWeightCalculation:
     @staticmethod
     def _get_latest_style_file() -> Path:
         """가장 최근 수정된 style 출력 파일 반환"""
-        style_files = list(TEST_OUTPUT_DIR.glob("total_aggregated_weights_style*_test*.csv"))
+        style_files = list(TEST_OUTPUT_DIR.glob("weights_style*_test*.csv"))
         if not style_files:
             return None
         # 수정 시간 기준 정렬하여 가장 최근 파일 반환
@@ -291,7 +291,7 @@ class TestStyleLsWeightCalculation:
             test_file=str(TEST_DATA_PATH),
         )
 
-        # total_aggregated_weights_style 파일 확인 (가장 최근 파일)
+        # weights_style 파일 확인 (가장 최근 파일)
         style_file = self._get_latest_style_file()
         assert style_file is not None, "Style output file not found"
 

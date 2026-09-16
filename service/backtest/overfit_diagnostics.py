@@ -62,10 +62,11 @@ def calc_funnel_value_add(walk_forward_result: WalkForwardResult) -> dict[str, A
 
     A. EW_All:       전체 유효 팩터 동일가중 (시장/팩터 베타)
     B. EW_Top50:     1차 필터링 후 동일가중 (필터링 실력)
-    C. Constrained EW: Top-N 동일가중 + style_cap(25%) 재분배 (제약 부가)
+    C. Constrained EW: 선정 팩터에 config 가중(기본 erc + TS 틸트) + style_cap(25%) 재분배
+       (= 본전략 MP. "EW" 라벨은 1/N 시절 관례 — CSV 키 호환을 위해 유지)
 
-    현재 C는 학습된 가중치가 아니라 deterministic 재분배일 뿐이다
-    (공분산/MC 최적화는 커밋 8dfb64e에서 제거됨).
+    C 의 가중은 IS cov 기반 ERC(학습 파라미터 없음) + deterministic 재분배다
+    (종목단 공분산/MC 최적화는 커밋 8dfb64e에서 제거됨).
 
     판별 기준 (CAGR 기준):
       C > B > A -> 정상 (필터링 + style_cap 제약 모두 가치 창출)

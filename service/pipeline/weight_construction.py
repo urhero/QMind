@@ -384,39 +384,28 @@ def calculate_vectorized_return(
         empty = pd.DataFrame(columns=[factor_abbr], dtype=float)
         return empty, empty.copy(), empty.copy()
 
-    # 단일 pivot으로 3개 값을 한번에 추출
+    # 단일 pivot으로 3개 값을 한번에 추출 (pivot_table 은 ddt 오름차순 정렬 반환)
     pivoted = portfolio_data_df.pivot_table(
         index="ddt", columns="gvkeyiid", values=["return_weight", "M_RETURN", "turnover_weight"]
     )
     weight_matrix_df = pivoted["return_weight"]
-    rtn_df = pivoted["M_RETURN"].copy()
-    rtn_df.iloc[0] = 0
-    turnover_weight_df = pivoted["turnover_weight"]
-    sgn_df = np.sign(weight_matrix_df)
+    r = pivoted["M_RETURN"].copy()
+    r.iloc[0] = 0
+    w = pivoted["turnover_weight"]
 
-    r = rtn_df.sort_index()
-    w = turnover_weight_df.reindex(r.index)
-    w0 = turnover_weight_df
-    is_rebal = w.notna().any(axis=1).fillna(False)
-    block_id = is_rebal.cumsum().astype(int)
-    cumulative_growth_block = (1 + sgn_df * r).groupby(block_id).cumprod()
+    # 매월 리밸런싱: 당월 목표 비중 w(t) 가 당월 수익으로 표류한 w_pre(t) 와 다음 목표
+    # w(t+1) 의 차이가 턴오버. (구 "리밸 블록별 cumprod" 는 월간 리밸에서 블록 크기가
+    # 항상 1 이라 항등 -> 2026-09-16 단순화, 출력 byte 동일 검증)
+    drifted = w * (1 + np.sign(weight_matrix_df) * r)
+    w_pre = drifted.div(drifted.sum(axis=1), axis=0)
 
-    # w0 * cumulative_growth_block를 한번만 계산
-    weighted_growth = w0 * cumulative_growth_block
-    denom = weighted_growth.sum(axis=1)
-    w_pre = weighted_growth.div(denom, axis=0)
-
-    rebal_in_r = r.index.intersection(turnover_weight_df.index)
     # 편입 매수/편출 매도 포함: 미보유 월(NaN) 비중을 0으로 간주해 |w_next - w_pre|
     # 전액을 턴오버로 계상한다. (구 버전은 NaN 차감이 합산에서 빠져 연속 보유 종목의
     # 비중 변화만 계상 -> 비용 과소, 고회전 팩터가 랭킹에서 과대평가되는 편향)
-    turnover = (
-        w.shift(-1).loc[rebal_in_r].fillna(0.0) - w_pre.loc[rebal_in_r].fillna(0.0)
-    ).abs().sum(axis=1)
+    turnover = (w.shift(-1).fillna(0.0) - w_pre.fillna(0.0)).abs().sum(axis=1)
     if len(turnover) > 0:
-        # 마지막 월은 다음 목표 비중이 없음(청산 아님) -> 비용 0 (기존 동작 유지)
+        # 마지막 월은 다음 목표 비중이 없음(청산 아님) -> 비용 0
         turnover.iloc[-1] = 0.0
-    turnover = turnover.reindex(r.index).fillna(0)
     trading_friction = (cost_bps / 1e4) * turnover
 
     _gross = (weight_matrix_df * r).sum(axis=1)

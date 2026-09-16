@@ -1,16 +1,9 @@
 # -*- coding: utf-8 -*-
-"""팩터 유니버스 평가 + 선정 (restructure Phase 4).
+"""팩터 유니버스 평가 + 선정 (README [4]).
 
-model_portfolio 오케스트레이터의 _evaluate_universe 메서드를 추출한 모듈.
-롱-숏 수익률 행렬을 만들고 rank_score(factor_ranking_method) 상위 N개를 선정한다.
-선정 로직(rank_score / cluster dedup / hysteresis)은 walk-forward 엔진과
-service.factor.selection 함수 레벨에서 공유된다.
-
-수치 동일성: 함수 본문은 기존 메서드에서 self.pipeline_params -> pipeline_params
-치환 외 변경 없음(글자보존). 경로 상수와 aggregate_factor_returns 는 각자의
-실제 소유 모듈(service.paths / service.factor.factor_returns)에서 직접 import 한다
-(과거 model_portfolio 경유 lazy import 로 model_portfolio<->universe 순환을 회피했으나,
-실제 소유 모듈이 분리되며 순환이 사라져 모듈 최상위 import 로 정리).
+롱-숏 수익률 행렬을 만들고 rank_score(factor_ranking_method) 로 팩터를 선정한다.
+선정 규칙(절단 / cluster dedup / hysteresis)은 service.factor.selection.select_factors()
+로 walk-forward 엔진과 공유된다.
 """
 from __future__ import annotations
 
@@ -21,12 +14,10 @@ import pandas as pd
 
 from service.factor.factor_returns import aggregate_factor_returns
 from service.factor.selection import (
-    apply_selection_hysteresis,
-    cluster_and_dedup_top_n,
-    cluster_winner_median_dedup,
     compute_newey_west_tstat,
     compute_rank_score,
     compute_tstat,
+    select_factors,
 )
 from service.paths import HISTORY_DIR, OUTPUT_DIR, TEST_OUTPUT_DIR, dated
 from service.pipeline.weight_history import load_prev_selection
@@ -64,7 +55,9 @@ def evaluate_universe(kept_abbrs, kept_names, kept_styles, filtered_data, end_da
         logger.warning("Duplicate factor columns detected, removing duplicates")
         ret_df = ret_df.loc[:, ~ret_df.columns.duplicated(keep="first")]
 
-    valid = ret_df.columns[(ret_df == 0).sum() <= pipeline_params["max_zero_return_months"]]
+    # 0 수익률 월 필터 — 첫 행(강제 기준점 0)은 제외하고 실제 월만 센다 (2026-09-16;
+    # 구 코드는 기준점 행까지 세서 설정값 10 이 실질 9 였음). 엔진 Tier 2 와 동일 규칙.
+    valid = ret_df.columns[(ret_df.iloc[1:] == 0).sum() <= pipeline_params["max_zero_return_months"]]
     ret_df = ret_df[valid]
 
     meta_all = pd.DataFrame({"factorAbbreviation": kept_abbrs, "factorName": kept_names, "styleName": kept_styles})
@@ -76,7 +69,7 @@ def evaluate_universe(kept_abbrs, kept_names, kept_styles, filtered_data, end_da
     meta["cagr"] = ((1 + ret_df).cumprod().iloc[-1] ** (12 / months) - 1).reindex(
         meta["factorAbbreviation"]).values
 
-    # Sprint 1-C: Newey-West 보정 t-stat 진단 컬럼 (관찰용)
+    # Newey-West 보정 t-stat 진단 컬럼 (관찰용, 랭킹 미사용)
     monthly_rets = ret_df.iloc[1:][meta["factorAbbreviation"].tolist()]
     nw_lag = int(pipeline_params.get("newey_west_lag", 3))
     meta["tstat"] = compute_tstat(monthly_rets).reindex(meta["factorAbbreviation"]).values
@@ -108,50 +101,20 @@ def evaluate_universe(kept_abbrs, kept_names, kept_styles, filtered_data, end_da
         meta.to_csv(dated(OUTPUT_DIR / "meta_data.csv", ret_df.index.max()), index=False)
 
     top_n = min(pipeline_params["top_factor_count"], len(meta))
-    meta_full = meta  # truncation 전 전체 후보 (히스테리시스 부활 후보/점수 조회용)
 
-    # Sprint 1-B: Hierarchical Clustering 기반 Top-N dedup (선택적)
-    # use_cluster_dedup=False 일 때는 단순 rank_score 상위 N
-    if pipeline_params.get("use_cluster_dedup", False):
-        score_series = meta.set_index("factorAbbreviation")["rank_score"]
-        if pipeline_params.get("cluster_method", "topn") == "winner_median":
-            selected = cluster_winner_median_dedup(
-                monthly_rets, score_series,
-                n_clusters=int(pipeline_params.get("n_clusters", 18)),
-                per_cluster_keep=int(pipeline_params.get("per_cluster_keep", 3)),
-            )
-        else:
-            selected = cluster_and_dedup_top_n(
-                monthly_rets,
-                score_series,
-                n_clusters=int(pipeline_params.get("n_clusters", 18)),
-                per_cluster_keep=int(pipeline_params.get("per_cluster_keep", 3)),
-                top_n=top_n,
-            )
-        logger.info("cluster_dedup applied (%s): %d factors selected from %d via %d clusters",
-                    pipeline_params.get("cluster_method", "topn"),
-                    len(selected), len(score_series),
-                    int(pipeline_params.get("n_clusters", 18)))
-    else:
-        selected = meta["factorAbbreviation"].tolist()[:top_n]
-
-    # 선정 히스테리시스 (walk-forward 와 동일 로직): 직전 선정 incumbents 를
-    # margin 미만 격차의 챌린저로부터 보호. test 모드는 prod history 오염 방지 skip.
+    # 선정(절단 / 클러스터 dedup) + 선정 히스테리시스 — walk-forward Tier 2 와
+    # select_factors() 공유 (선정 규칙 단일 출처). incumbents = 직전 회차 선정 집합
+    # (factor_styles raw_weight>0). test 모드는 prod history 오염 방지를 위해 skip.
     margin = float(pipeline_params.get("selection_hysteresis", 0.0))
+    prev_selected = None
     if margin > 0 and not test_file:
-        prev_selected, prev_sel_date = load_prev_selection(HISTORY_DIR, end_date)
-        if prev_selected:
-            score_full = meta_full.set_index("factorAbbreviation")["rank_score"]
-            adjusted = apply_selection_hysteresis(list(selected), score_full, prev_selected, margin)
-            n_reverted = len(set(adjusted) - set(selected))
-            if n_reverted:
-                logger.info(
-                    "selection_hysteresis: %d incumbent(s) retained vs %s (margin=%.2f)",
-                    n_reverted, prev_sel_date, margin,
-                )
-            selected = adjusted
+        prev_selected, _prev_sel_date = load_prev_selection(HISTORY_DIR, end_date)
+    selected = select_factors(
+        monthly_rets, meta.set_index("factorAbbreviation")["rank_score"],
+        pipeline_params, top_n, incumbents=prev_selected, margin=margin,
+    )
 
-    meta = meta_full.set_index("factorAbbreviation").loc[selected].reset_index()
+    meta = meta.set_index("factorAbbreviation").loc[selected].reset_index()
 
     order = meta["factorAbbreviation"].tolist()
     ret_df = ret_df[order]

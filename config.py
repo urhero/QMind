@@ -41,14 +41,14 @@ if not PARAM["user_name"]:
 
 # ── 파이프라인 비즈니스 파라미터 ──────────────────────────────────────────────
 #
-# [최적화 모드 가이드]
+# [모드 가이드]
 #   optimization_mode: "erc"(기본, 상관 인지 ERC) / "equal_risk_weight"(1/sigma)
-#                      / "equal_weight"(구 기본 1/N) / "hardcoded"(프로덕션 고정 가중치)
-#   factor_ranking_method: "shrunk_tstat"(Sprint 1-A) / "tstat" / "cagr"
-#   use_cluster_dedup: Sprint 1-B Hierarchical Clustering 중복 제거 on/off
+#                      / "equal_weight"(구 기본 1/N) / "hardcoded"(구 프로덕션 고정 가중치)
+#   factor_ranking_method: "tstat"(기본) / "shrunk_tstat"(스타일 평균 수축) / "cagr"
+#   use_cluster_dedup: 상관 기반 Hierarchical Clustering 중복 제거 on/off (cluster_method 참조)
 #
-# 공통 파라미터 + 유니버스별 오버라이드 -> PIPELINE_PARAMS. 유니버스별 값은 각 브랜치
-# (main=MXCN1A, mxwo_sharpe1=MXWO)에서 채택돼 있던 값을 그대로 옮긴 것 (2026-09-02).
+# 공통 파라미터 + 유니버스별 오버라이드 -> PIPELINE_PARAMS (2026-09-02 통합; 유니버스별 값은
+# 통합 전 각 전용 브랜치에서 채택돼 있던 값). 개발 브랜치 운영은 README "유니버스 전환" 표.
 _COMMON_PARAMS = {
     "style_cap": 0.25,                # 스타일별 최대 비중 (프로덕션 규제 요건)
     # ── factor-level 백테스트 전용 비용 배수 ──────────────────────────────────
@@ -59,12 +59,11 @@ _COMMON_PARAMS = {
     # (MXWO 10bp x 0.6 = 6bp; MXCN1A 20bp x 0.6 = 12bp).
     # mp(운영) 파이프라인에는 적용되지 않음 (백테스트 전용).
     "backtest_cost_multiplier": 0.6,   # 선정 입력용 비용 (비용 인지 선정이 A/B 최적 — 0/22bp 모두 열위). 주의: factor-level 성과 회계는 고회전 구성에서 실비용 과소계상 -> 정본 성과 판단은 mp_level_cost_backtest 실측 기준
-    "top_factor_count": 50,            # 상위 팩터 선정 수
+    "top_factor_count": 50,            # rank_score 상위 절단 수 (dedup off 또는 cluster_method=topn 에서 적용; winner_median 은 미사용). backtest CLI --top-factors 미지정 시 이 값
     "spread_threshold_pct": 0.05,      # L/N/S 라벨링 임계값. MXWO 0.05 (2026-07-29, 0.025~0.05 고원) / MXCN1A 0.05 (2026-08-05: MDD -10.1->-6.1%, Calmar 0.305); 구 0.10
     "min_sector_stocks": 10,           # 섹터-날짜 최소 종목 수 (프로덕션)
     "max_zero_return_months": 10,      # 0 수익률 허용 최대 월 수
-    "backtest_start": "2009-12-31",    # 백테스트 시작일 (엔진은 parquet 전체 기간을 돎 — MXWO 데이터는 2015-06 부터)
-    "backtest_end": "2026-03-31",      # 백테스트 종료일
+    "backtest_start": "2009-12-31",    # 팩터 L/S 수익률 계산 하한(ddt >= 이 값). 엔진은 parquet 전체 기간을 돌고 CLI 날짜는 무시 — MXWO 데이터는 2015-06 부터라 사실상 no-op
     "optimization_mode": "erc",        # "erc"(상관 인지 ERC; MXWO 2026-07-29, MXCN1A 2026-08-05 채택) / "equal_risk_weight"(1/sigma) / "equal_weight"(1/N) / "hardcoded". 근거: docs/experiments/mxwo_sharpe_ladder_20260729.md, mxcn1a_component_ablation_20260805.md
     "deploy_step": 1.0,                # 부분 조정 배포 (1.0=전량 조정). MXWO: 20bp 시절 0.5 채택했으나 10bp 전환 후 역전 — 실측 step1.0 0.672 > 0.5 0.604 (2026-07-30)
     "ts_mom_window": 3,                # 팩터 TS 모멘텀 틸트: trailing N개월 자기수익 음수 팩터 비중 감쇠. MXWO 3 (2026-08-07 재검증: 독립 재실행 2회 연속 3M 피크 + 실측 net 0.721->0.761) / MXCN1A 3 (창 3~6 고원, 2026-08-05). None/0 = off
@@ -78,13 +77,13 @@ _COMMON_PARAMS = {
 
 _UNIVERSE_PARAMS = {
     # 중국 A주. 2026-08-05 컴포넌트 ablation 채택 스택 (docs/experiments/mxcn1a_component_ablation_20260805.md).
-    # 실측 net Sharpe 0.703 / MDD -4.9%.
+    # 실측 net Sharpe 0.730 / MDD -0.76% (롱숏 ±7% 배포 기준, 2026-09-16 look-ahead 제거 후; 구 미스케일 0.703 / -4.9%).
     "MXCN1A": {
         "transaction_cost_bps": 20.0,  # 종목 단위 거래비용 (basis points)
         "apply_country_tax": False,    # 국가별 거래세(COUNTRY_TAX_BPS) 미적용. A주는 등록지(HKG 등)와 무관하게 본토 인지세 대상 — 등록지 기준 세율표가 맞지 않음 (2026-09-02)
         "erc_shrinkage": 0.5,          # ERC cov 대각 수축 비율. 0.2~0.5 고원, 실측 검증값 0.5 채택 (2026-08-05)
         "ts_mom_scale": 0.5,           # 감쇠 배율 (0.7은 열위, 0.5 채택)
-        "use_cluster_dedup": True,     # Sprint 1-B: Top-N Hierarchical Clustering 중복 제거 (production 적용)
+        "use_cluster_dedup": True,     # 상관 클러스터 dedup (cluster_method=winner_median) 적용 — 2026-06-30 채택
         "is_window_months": None,      # expanding IS
         "selection_hysteresis": 0.5,   # 선정 히스테리시스 margin (rank_score 단위). 0=off. 실험 근거: smoothing_cost_experiment_20260612.md
         "weight_rebal_months": 3,      # Tier 2 가중 리밸 주기 (구 backtest CLI 기본값)
@@ -93,7 +92,7 @@ _UNIVERSE_PARAMS = {
         "mp_target_gross": 0.14,       # MP 배포 목표 총 gross (롱 +7% / 숏 -7%). 2026-09-02 사용자 지정 (그 전엔 None=배수 1.0, 북 gross ~0.92 그대로). 시점별 이력은 data/MXCN1A/mp_target_gross.csv
     },
     # MSCI World. 2026-07~08 Sharpe 사다리 채택 스택 (docs/experiments/mxwo_sharpe_ladder_20260729.md).
-    # 실측 net Sharpe 0.739 / MDD -4.80 (국가별 거래세 반영 후).
+    # 실측 net Sharpe 0.661 / MDD -1.99% (롱숏 ±20% 배포 기준, 거래세 반영, 2026-09-16 Tier 1 look-ahead 제거 후; 구 0.734).
     "MXWO": {
         "transaction_cost_bps": 10.0,  # 선진국 대형주 실집행 기준 10bp (2026-07-30 사용자 지정). 국가별 거래세는 COUNTRY_TAX_BPS 로 별도 계상
         "apply_country_tax": True,     # 등록지 기준 국가별 거래세 적용 (실측 회계 전용, 2026-08-12)

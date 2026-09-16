@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     parser_report.add_argument("--report", action="store_true", help="Generate report and exit.")
 
     # backtest: Walk-Forward 백테스트
-    parser_backtest = subparsers.add_parser("backtest", help="Walk-Forward (Expanding Window) backtest.")
+    parser_backtest = subparsers.add_parser("backtest", help="Walk-Forward backtest (rolling/expanding IS per config).")
     parser_backtest.add_argument("args", nargs="+", help="'test <filename>' or '<start_date> <end_date>'")
     parser_backtest.add_argument("--min-is-months", type=int, default=36,
                                   help="Minimum IS period in months (default: 36)")
@@ -64,8 +64,8 @@ def main(argv: list[str] | None = None) -> int:
                                   help="Tier 1 rebalancing frequency (default: 6)")
     parser_backtest.add_argument("--weight-rebal-months", type=int, default=None,
                                   help="Tier 2 rebalancing frequency (default: config weight_rebal_months)")
-    parser_backtest.add_argument("--top-factors", type=int, default=50,
-                                  help="Number of top factors to select (default: 50)")
+    parser_backtest.add_argument("--top-factors", type=int, default=None,
+                                  help="Number of top factors to select (default: config top_factor_count)")
     parser_backtest.add_argument("--selection-hysteresis", type=float, default=None,
                                   help="Selection hysteresis margin in rank_score units "
                                        "(default: config PIPELINE_PARAMS['selection_hysteresis'])")

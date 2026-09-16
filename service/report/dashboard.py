@@ -710,7 +710,7 @@ def _build_portfolio_section(output_dir: Path, end_date: str | None,
     weights_path = dd.find_latest_weights_file(output_dir, end_date)
     if weights_path is None:
         return (['<h2>2. 현재 포트 / 배팅</h2>'
-                 '<div class="note">total_aggregated_weights_*.csv 없음 - '
+                 '<div class="note">weights_factor_*.csv 없음 - '
                  '현재 포트 섹션 생략. (python main.py mp ... 실행 필요)</div>'], [])
 
     weights = dd.load_weights(weights_path)
@@ -723,7 +723,6 @@ def _build_portfolio_section(output_dir: Path, end_date: str | None,
     selected = dd.active_factors(weights)
 
     style_cap = float(PIPELINE_PARAMS["style_cap"])
-    benchmark = PARAM["benchmark"]
 
     cards = [
         f'<div class="card">{_fig_div(ch.style_allocation_fig(style_w, style_cap), include_js=not js_already)}</div>'

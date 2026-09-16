@@ -194,7 +194,7 @@ def validate_loaded_factor_data(
         min_months: 최소 월 수 (기본 3)
         min_factors_per_month: 월별 최소 팩터 수 (기본 50)
         min_stocks_per_month: 월별 최소 종목 수 (기본 30)
-        max_null_pct: val 컬럼 최대 NaN 비율 (기본 10%)
+        max_null_pct: val 컬럼 최대 NaN 비율 (기본 20%)
 
     Returns:
         경고/에러 리스트 [{"level": "WARN"|"ERROR", "type": str, "message": str}]

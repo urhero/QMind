@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from service.paths import DATA_DIR, DATE_GLOB, OUTPUT_DIR, UNIVERSE_DATA_DIR
+from service.paths import DATA_DIR, DATE_GLOB, OUTPUT_DIR, UNIVERSE_DATA_DIR  # noqa: F401 - re-exported: dashboard.py reads dd.DATA_DIR / dd.OUTPUT_DIR / dd.UNIVERSE_DATA_DIR
 from service.report.diagnostics_keys import CAT_CMP, CAT_FUNNEL, CAT_OOS_CEW, METRIC_PATTERN
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
@@ -22,16 +22,14 @@ _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 # ── 파일 탐색 ──────────────────────────────────────────────────────────────
 
 def find_latest_weights_file(output_dir: Path, end_date: str | None = None) -> Path | None:
-    """total_aggregated_weights_<date>[suffix].csv 중 최신(또는 지정일) 파일 반환.
+    """weights_factor_<date>[suffix].csv 중 최신(또는 지정일) 파일 반환.
 
     _style 변형은 제외. 파일명에서 날짜를 파싱해 최대 날짜를 고르고,
     동일 날짜가 여럿이면 수정시각(mtime)이 최신인 파일을 택한다.
     """
     output_dir = Path(output_dir)
     candidates: list[tuple[str, float, Path]] = []
-    for p in output_dir.glob(f"{DATE_GLOB}/total_aggregated_weights_*.csv"):
-        if p.name.startswith("total_aggregated_weights_style"):
-            continue
+    for p in output_dir.glob(f"{DATE_GLOB}/weights_factor_*.csv"):
         m = _DATE_RE.search(p.name)
         if not m:
             continue
@@ -326,7 +324,7 @@ def build_kpis(curves: pd.DataFrame, diag: dict | None = None) -> dict:
 # ── 현재 포트 / 배팅 ───────────────────────────────────────────────────────
 
 def load_weights(path: Path) -> pd.DataFrame:
-    """total_aggregated_weights_*.csv -> 무명 인덱스열 + MP 집계행 제거한 DataFrame.
+    """weights_factor_*.csv -> 무명 인덱스열 + MP 집계행 제거한 DataFrame.
 
     파일에는 종목x팩터 원천 행 외에 MP 합계 행(style=='MP', factor=='AGG')이 섞여 있다.
     이는 합계 산출물이므로 차트 집계(스타일/팩터/종목/섹터)에서 제외한다 - 포함하면

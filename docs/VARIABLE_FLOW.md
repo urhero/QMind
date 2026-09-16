@@ -50,7 +50,7 @@ graph TD
     Func_Filter --> Var_KeptLists
 
     %% --- [4] Evaluate Universe ---
-    Func_GenMeta{{"[4] evaluate_universe<br/>(aggregate_factor_returns → CAGR 랭킹 → top 50)"}}:::func
+    Func_GenMeta{{"[4] evaluate_universe<br/>(aggregate_factor_returns → rank_score(t-stat) → select_factors: 절단/dedup/히스테리시스)"}}:::func
     Var_FacRet("return_matrix<br/>(pd.DataFrame)"):::data
     Var_Meta("meta<br/>(pd.DataFrame)"):::data
 
@@ -59,14 +59,14 @@ graph TD
     Func_GenMeta --> Var_Meta
 
     %% --- [6] Weight Determination ---
-    Func_Sim{{"[6] optimize_constrained_weights<br/>(듀얼 모드: hardcoded/equal_weight)"}}:::func
+    Func_Sim{{"[6] optimize_constrained_weights<br/>(erc 기본 + TS 틸트 + style_cap / equal_risk_weight / equal_weight / hardcoded)"}}:::func
     Var_Res("sim_result<br/>(best_stats, weights_tbl)"):::data
 
     Var_FacRet & Var_Meta --> Func_Sim
     Func_Sim --> Var_Res
 
     %% --- [7] Construct & Export ---
-    Func_Construct{{"[7] _construct_and_export<br/>(종목별 비중 → MP 집계 → CSV 출력)"}}:::func
+    Func_Construct{{"[7] _construct_and_export<br/>(종목별 비중 → MP 집계 → 섹터 숏캡 → 배포 배수 → CSV 출력)"}}:::func
     Var_WeightRaw("weight_raw<br/>(pd.DataFrame)"):::data
     Var_AggW("agg_w (MP)<br/>(pd.DataFrame)"):::data
     Var_FinalWeights("final_weights<br/>(pd.DataFrame)"):::data
@@ -79,9 +79,9 @@ graph TD
     Var_FinalWeights --> Var_Pivoted
 
     %% --- Files Output ---
-    File_Total[("📄 total_aggregated_weights_*.csv")]:::file
-    File_Style[("📄 total_aggregated_weights_style_*.csv")]:::file
-    File_Pivot[("📄 pivoted_total_agg_wgt_*.csv")]:::file
+    File_Total[("📄 weights_factor_*.csv")]:::file
+    File_Style[("📄 weights_style_*.csv")]:::file
+    File_Pivot[("📄 weights_pivot_*.csv")]:::file
     File_Meta[("📄 meta_data.csv")]:::file
 
     Var_FinalWeights --> File_Total
@@ -102,8 +102,8 @@ graph TD
 | `[2]` | `factor_stats` | 팩터별 분석 결과 (sector_return, spread, merged_df) | `list[tuple]` | `calculate_factor_stats_batch` |
 | `[3]` | `filtered_data` | 섹터 필터 + label 부여된 종목 데이터 | `List[pd.DataFrame]` | `filter_and_label_factors` |
 | `[3]` | `kept_abbrs/names/styles` | 유지된 팩터 메타 리스트 | `List[str]` | `filter_and_label_factors` |
-| `[4]` | `return_matrix` | 월간 net return 매트릭스 (top 50 팩터) | `pd.DataFrame` | `evaluate_universe` |
-| `[4]` | `meta` | 팩터 성과/랭크 테이블 (CAGR, rank_style, rank_total) | `pd.DataFrame` | `evaluate_universe` |
+| `[4]` | `return_matrix` | 월간 net return 매트릭스 (선정 팩터, 첫 행 기준점 0) | `pd.DataFrame` | `evaluate_universe` |
+| `[4]` | `meta` | 팩터 성과/랭크 테이블 (rank_score=t-stat, cagr, newey_west_tstat, rank_style, rank_total) | `pd.DataFrame` | `evaluate_universe` |
 | `[6]` | `sim_result` | (best_stats, weights_tbl) -- 최적 비중 결과 | `Tuple` | `optimize_constrained_weights` |
 | `[7]` | `weight_raw` | 팩터별 종목 가중치 | `pd.DataFrame` | `_construct_and_export` |
 | `[7]` | `agg_w` | MP (팩터 통합) 가중치 | `pd.DataFrame` | `_construct_and_export` |

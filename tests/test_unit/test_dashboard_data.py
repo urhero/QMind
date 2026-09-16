@@ -37,7 +37,7 @@ def _curves(n: int = 12) -> pd.DataFrame:
 
 
 def _weights() -> pd.DataFrame:
-    """total_aggregated_weights_*.csv 스키마의 소형 가중치 DataFrame."""
+    """weights_factor_*.csv 스키마의 소형 가중치 DataFrame."""
     data = [
         ("F1", "A", 0.1, [("T1", 0.05), ("T2", -0.05)]),
         ("F2", "A", 0.2, [("T1", 0.10), ("T3", -0.10)]),
@@ -135,7 +135,7 @@ def test_load_weights_drops_aggregation_rows(tmp_path):
          "mp_ls_weight": 0.05, "ls_weight": 0.05, "factor_weight": 0.2928,
          "factor": "AGG", "style": "MP", "name": "MXCN1A_MP", "count": 10, "style_ls_weight": 0.05},
     ]
-    p = tmp_path / "total_aggregated_weights_2099-01-31_test.csv"
+    p = tmp_path / "weights_factor_2099-01-31_test.csv"
     pd.DataFrame(rows).to_csv(p, index=True)
     w = dd.load_weights(p)
     assert "AGG" not in set(w["factor"])
@@ -177,22 +177,22 @@ def test_top_longs_shorts_signs_and_dedup():
 def test_find_latest_weights_file_picks_max_date_excludes_style(tmp_path):
     for d in ("2025-01-31", "2025-02-28", "2025-03-31"):
         (tmp_path / d).mkdir()
-    (tmp_path / "2025-01-31" / "total_aggregated_weights_2025-01-31_test.csv").write_text("x")
-    (tmp_path / "2025-02-28" / "total_aggregated_weights_2025-02-28_test.csv").write_text("x")
-    (tmp_path / "2025-03-31" / "total_aggregated_weights_style_2025-03-31_test.csv").write_text("x")
+    (tmp_path / "2025-01-31" / "weights_factor_2025-01-31_test.csv").write_text("x")
+    (tmp_path / "2025-02-28" / "weights_factor_2025-02-28_test.csv").write_text("x")
+    (tmp_path / "2025-03-31" / "weights_style_2025-03-31_test.csv").write_text("x")
     # 기준일 폴더 밖(test/ 등)의 파일은 후보가 아니다
-    (tmp_path / "total_aggregated_weights_2025-04-30_test.csv").write_text("x")
+    (tmp_path / "weights_factor_2025-04-30_test.csv").write_text("x")
     found = dd.find_latest_weights_file(tmp_path)
     assert found is not None
-    assert found.name == "total_aggregated_weights_2025-02-28_test.csv"
+    assert found.name == "weights_factor_2025-02-28_test.csv"
 
 
 def test_find_latest_weights_file_respects_end_date(tmp_path):
     for d in ("2025-01-31", "2025-02-28"):
         (tmp_path / d).mkdir()
-        (tmp_path / d / f"total_aggregated_weights_{d}_test.csv").write_text("x")
+        (tmp_path / d / f"weights_factor_{d}_test.csv").write_text("x")
     found = dd.find_latest_weights_file(tmp_path, end_date="2025-01-31")
-    assert found.name == "total_aggregated_weights_2025-01-31_test.csv"
+    assert found.name == "weights_factor_2025-01-31_test.csv"
 
 
 def test_find_latest_weights_file_none_when_empty(tmp_path):
@@ -200,7 +200,7 @@ def test_find_latest_weights_file_none_when_empty(tmp_path):
 
 
 def test_snapshot_date_from_path():
-    p = Path("output/total_aggregated_weights_2026-05-31_test.csv")
+    p = Path("output/weights_factor_2026-05-31_test.csv")
     assert dd.snapshot_date_from_path(p) == "2026-05-31"
 
 
@@ -368,7 +368,7 @@ def test_build_dashboard_smoke(tmp_path):
     _curves().reset_index().to_csv(tmp_path / "walk_forward_results.csv", index=False)
     _weight_history().to_csv(tmp_path / "walk_forward_weight_history.csv")
     (tmp_path / "2099-01-31").mkdir()  # 기준일 폴더 (2026-09-09)
-    _weights().to_csv(tmp_path / "2099-01-31" / "total_aggregated_weights_2099-01-31_test.csv", index=True)
+    _weights().to_csv(tmp_path / "2099-01-31" / "weights_factor_2099-01-31_test.csv", index=True)
     pd.DataFrame(
         {
             "factorAbbreviation": ["F1", "F2", "F9"],

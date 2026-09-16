@@ -29,7 +29,7 @@
       리스크 기여 분포 확인. 좋아 보이는 숫자가 붕괴 아티팩트일 수 있다.
       (근거: mxwo_sharpe_ladder_20260729.md "0.564 철회")
 - [ ] **byte-diff**: 스위치 off 시 기존 산출물과 byte-identical 확인
-      (`aggregated_weights_*`, `total_aggregated_weights_*`, `meta_data.csv`)
+      (`aggregated_weights_*`, `weights_factor_*`, `meta_data.csv`)
 - [ ] **pytest 통과**: `python -m pytest tests/test_unit/ -v`
 - [ ] **독립 재실행 재현**: 채택 근거 수치는 1회 실행으로 확정하지 말 것
       (근거: ts_mom_window 재검증 2026-08-07)
