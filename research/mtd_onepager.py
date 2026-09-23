@@ -137,10 +137,21 @@ fig.legend(handles=[Patch(color=scol_(x), label=x) for x in styles if x in alloc
 # ── 1) 스타일: 기여 내림차순, 왼쪽 막대 / 오른쪽 비중
 sv = sdf.sort_values("c", ascending=False)
 fig.text(0.07, 0.845, "스타일별 비중과 기여", fontsize=10.5, weight="bold", color=INK)
-fig.text(0.07, 0.831, "기준일까지 누적 기여(bp), 기여 내림차순 · 오른쪽 = 팩터 배분 비중 (배포 롱숏 평균)", fontsize=7.5, color=MUTED)
-ax1 = fig.add_axes([0.31, 0.625, 0.42, 0.19])
+fig.text(0.07, 0.831, "왼쪽 = 기준일까지 누적 기여(bp), 기여 내림차순 · 오른쪽 = 팩터 배분 비중 파이 (합 100%), 괄호 = 배포 롱숏 평균", fontsize=7.5, color=MUTED)
+ax1 = fig.add_axes([0.22, 0.625, 0.26, 0.19])
 contrib_chart(ax1, list(sv.index), list(sv.c * 1e4), [scol_(x) for x in sv.index])
-right_notes(ax1, [wfmt(alloc_st.get(s_, 0.0), r.long, r.short) for s_, r in sv.iterrows()], "비중 (롱숏 평균)")
+# 배분 파이: 배분 내림차순, 12시부터 시계방향 · 라벨은 겹침 방지로 옆 목록에 (색 사각형 + 이름 + "배분% (롱숏평균%)")
+pv = sdf.assign(alloc=[alloc_st.get(x, 0.0) for x in sdf.index]).sort_values("alloc", ascending=False)
+axp = fig.add_axes([0.48, 0.62, 0.20, 0.20])
+axp.pie(pv.alloc, colors=[scol_(x) for x in pv.index], startangle=90, counterclock=False,
+        wedgeprops=dict(width=0.45, edgecolor="white", linewidth=1.0))
+axp.set_aspect("equal")
+y0, dy = 0.795, 0.19 / max(len(pv), 1)
+for k_, (s_, r) in enumerate(pv.iterrows()):
+    y_ = y0 - k_ * dy
+    fig.patches.append(plt.Rectangle((0.70, y_ - 0.004), 0.008, 0.008, transform=fig.transFigure, color=scol_(s_)))
+    fig.text(0.713, y_, s_, fontsize=6.8, color=INK, va="center")
+    fig.text(0.95, y_, wfmt(r.alloc, r.long, r.short), fontsize=7.0, color=INK, va="center", ha="right", family="monospace")
 mp_long = sum(max(s_["wb_cur"], 0) for s_ in D["stocks"]); mp_short = sum(min(s_["wb_cur"], 0) for s_ in D["stocks"])
 # 합계 두 줄: 라벨/비중/기여 열 정렬 (라벨 = 비례 폰트, 숫자 = 고정폭) · 합계는 롱/숏 각각 표시
 alloc_tot = sum(alloc_st.values())
