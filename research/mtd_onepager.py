@@ -75,7 +75,7 @@ pct = lambda x, d=2: f"{x*100:+.{d}f}%"; pu = lambda x, d=2: f"{x*100:.{d}f}%"; 
 
 TITLE_NAME = {"MXWO": "QMIND KIC", "MXCN1A": "QMind BOK"}  # PDF 제목 표기 (사용자 지정 2026-09-21); 파일명·폴더는 유니버스 코드 유지
 fig.text(0.07, 0.955, f"{TITLE_NAME.get(BM, f'QMind {BM}')} MP 성과 분석", fontsize=14, weight="bold", color=INK)
-fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {D['rebalance']['actual_date']} 종가 교대{' 가정' if RB else ''}) · 배포 비중(gross {D['gross_cur']*100:.0f}%) · USD · 기여 = NAV 대비", fontsize=8.5, color=MUTED)
+fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {D['rebalance']['actual_date']} 종가 교대{' 가정' if RB else ''}) · 배포 비중(gross {D['gross_cur']*100:.0f}%)", fontsize=8.5, color=MUTED)
 fig.text(0.07, 0.905, f"MTD 기여  {bp(tot)}", fontsize=20, weight="bold", color=UP if tot > 0 else DOWN)
 
 def table(ax, title, header, rows, colw, colors=None, total_rows=0):
@@ -136,41 +136,48 @@ fig.legend(handles=[Patch(color=scol_(x), label=x) for x in styles if x in alloc
 
 # ── 1) 스타일: 기여 내림차순, 왼쪽 막대 / 오른쪽 비중
 sv = sdf.sort_values("c", ascending=False)
-fig.text(0.07, 0.845, "스타일별 비중과 기여", fontsize=10.5, weight="bold", color=INK)
-fig.text(0.07, 0.831, "왼쪽 = 기준일까지 누적 기여(bp), 기여 내림차순 · 오른쪽 = 팩터 배분 비중 파이 (합 100%), 괄호 = 배포 롱숏 평균", fontsize=7.5, color=MUTED)
-ax1 = fig.add_axes([0.22, 0.625, 0.26, 0.19])
+fig.text(0.07, 0.845, "팩터 스타일별 기여와 비중", fontsize=10.5, weight="bold", color=INK)
+ax1 = fig.add_axes([0.19, 0.625, 0.22, 0.19])
 contrib_chart(ax1, list(sv.index), list(sv.c * 1e4), [scol_(x) for x in sv.index])
-# 배분 파이: 배분 내림차순, 12시부터 시계방향 · 라벨은 겹침 방지로 옆 목록에 (색 사각형 + 이름 + "배분% (롱숏평균%)")
+# 배분 파이: 배분 내림차순, 12시부터 시계방향 · 라벨은 조각 바깥에 지시선으로 (이름 / "배분% (롱숏평균%)"), 같은 쪽 라벨은 겹치지 않게 아래로 밀어냄
 pv = sdf.assign(alloc=[alloc_st.get(x, 0.0) for x in sdf.index]).sort_values("alloc", ascending=False)
-axp = fig.add_axes([0.48, 0.62, 0.20, 0.20])
-axp.pie(pv.alloc, colors=[scol_(x) for x in pv.index], startangle=90, counterclock=False,
-        wedgeprops=dict(width=0.45, edgecolor="white", linewidth=1.0))
-axp.set_aspect("equal")
-y0, dy = 0.795, 0.19 / max(len(pv), 1)
-for k_, (s_, r) in enumerate(pv.iterrows()):
-    y_ = y0 - k_ * dy
-    fig.patches.append(plt.Rectangle((0.70, y_ - 0.004), 0.008, 0.008, transform=fig.transFigure, color=scol_(s_)))
-    fig.text(0.713, y_, s_, fontsize=6.8, color=INK, va="center")
-    fig.text(0.95, y_, wfmt(r.alloc, r.long, r.short), fontsize=7.0, color=INK, va="center", ha="right", family="monospace")
+axp = fig.add_axes([0.51, 0.595, 0.44, 0.245]); axp.set_aspect("equal")
+wedges, _ = axp.pie(pv.alloc, colors=[scol_(x) for x in pv.index], startangle=90, counterclock=False, radius=0.75,
+                    wedgeprops=dict(width=0.34, edgecolor="white", linewidth=1.0))
+axp.set_xlim(-2.1, 2.1); axp.set_ylim(-1.15, 1.15)
+labs = []
+for w_, (s_, r) in zip(wedges, pv.iterrows()):
+    ang = np.deg2rad((w_.theta1 + w_.theta2) / 2)
+    labs.append(dict(name=s_, txt=f"{r.alloc*100:.1f}% ({(r.long - r.short) / 2 * 100:.1f}%)", x=np.cos(ang), y=np.sin(ang)))
+for side in (1, -1):
+    grp = sorted([l_ for l_ in labs if (l_["x"] >= 0) == (side > 0)], key=lambda l_: l_["y"], reverse=True)
+    ys = [l_["y"] * 1.05 for l_ in grp]
+    for q in range(1, len(ys)):                       # 위에서부터 최소 간격 확보
+        ys[q] = min(ys[q], ys[q - 1] - 0.30)
+    if ys and ys[-1] < -1.05: ys = [y_ + (-1.05 - ys[-1]) for y_ in ys]
+    for l_, ty in zip(grp, ys):
+        axp.annotate(f"{l_['name']}\n{l_['txt']}", xy=(l_["x"] * 0.76, l_["y"] * 0.76), xytext=(side * 1.12, ty),
+                     ha="left" if side > 0 else "right", va="center", fontsize=6.5, color=INK, linespacing=1.25,
+                     arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.5, shrinkA=0, shrinkB=1))
+fig.text(0.485, 0.621, "팩터 배분 비중 (합 100%) · 괄호 = 배포 롱숏 평균", fontsize=6.8, color=MUTED)   # 파이 참고 (파이와 합계 사이)
 mp_long = sum(max(s_["wb_cur"], 0) for s_ in D["stocks"]); mp_short = sum(min(s_["wb_cur"], 0) for s_ in D["stocks"])
 # 합계 두 줄: 라벨/비중/기여 열 정렬 (라벨 = 비례 폰트, 숫자 = 고정폭) · 합계는 롱/숏 각각 표시
 alloc_tot = sum(alloc_st.values())
-for y_, lab, a_, lo_, sh_, c_ in [(0.585, "합계 (netting 전)", f"{alloc_tot*100:.1f}%", sdf.long.sum(), -sdf.short.sum(), sdf.c.sum()),
-                                  (0.571, "합계 (netting 후 = MP)", "", mp_long, -mp_short, tot)]:
-    fig.text(0.07, y_, lab, fontsize=7.6, weight="bold", color=INK)
+for y_, lab, a_, lo_, sh_, c_ in [(0.603, "합계 (netting 전)", f"{alloc_tot*100:.1f}%", sdf.long.sum(), -sdf.short.sum(), sdf.c.sum()),
+                                  (0.589, "합계 (netting 후 = MP)", "", mp_long, -mp_short, tot)]:
+    fig.text(0.485, y_, lab, fontsize=7.6, weight="bold", color=INK)   # 파이 아래 (비중 합계이므로 우측 열)
     # 한글은 고정폭 폰트에 글리프가 없어 라벨(롱/숏)과 숫자를 나눠 찍는다 (열 x 고정)
     kw = dict(fontsize=7.6, weight="bold", color=INK)
-    fig.text(0.225, y_, f"{a_:>6}", family="monospace", **kw)
-    fig.text(0.277, y_, "(롱", **kw); fig.text(0.299, y_, f"{lo_*100:5.1f}%", family="monospace", **kw)
-    fig.text(0.352, y_, "/ 숏", **kw); fig.text(0.377, y_, f"{sh_*100:5.1f}%)", family="monospace", **kw)
-    fig.text(0.45, y_, f"기여 {bp(c_)}", fontsize=7.6, weight="bold", color=cc(c_))
+    fig.text(0.64, y_, f"{a_:>6}", family="monospace", **kw)
+    fig.text(0.692, y_, "(롱", **kw); fig.text(0.714, y_, f"{lo_*100:5.1f}%", family="monospace", **kw)
+    fig.text(0.767, y_, "/ 숏", **kw); fig.text(0.792, y_, f"{sh_*100:5.1f}%)", family="monospace", **kw)
+    fig.text(0.865, y_, f"기여 {bp(c_)}", fontsize=7.6, weight="bold", color=cc(c_))
 
 # ── 2) 팩터: 기여 상·하위 10, 같은 구조
 top = fdf.sort_values("c", ascending=False).head(10); bot = fdf.sort_values("c", ascending=True).head(10)
 sel = pd.concat([top, bot.iloc[::-1]]).drop_duplicates()
 n_top = len(top)
-fig.text(0.07, 0.535, "팩터 기여 상하위 10", fontsize=10.5, weight="bold", color=INK)
-fig.text(0.07, 0.521, "기준일까지 누적 기여(bp), 점선 위 상위 · 아래 하위 · 오른쪽 = 팩터 배분 비중 (배포 롱숏 평균)", fontsize=7.5, color=MUTED)
+fig.text(0.07, 0.535, "상하위 TOP 10 팩터 기여", fontsize=10.5, weight="bold", color=INK)
 ax2 = fig.add_axes([0.31, 0.06, 0.42, 0.44])
 contrib_chart(ax2, [f"{f_}\n{fname.get(f_, '')[:30]}" for f_ in sel.index], list(sel.c * 1e4), [scol_(x) for x in sel["style"]], split_after=n_top)
 right_notes(ax2, [wfmt(FW.get(f_, 0.0), r.long, r.short) for f_, r in sel.iterrows()], "비중 (롱숏 평균)")
