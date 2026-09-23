@@ -204,6 +204,7 @@ data/*/*
 !data/*/country_map.parquet
 !data/*/mp_target_gross.csv
 !data/*/mp_multiplier.csv
+!data/*/rebalance_log.csv
 #config.py
 .cursorindexingignore
 node_modules/

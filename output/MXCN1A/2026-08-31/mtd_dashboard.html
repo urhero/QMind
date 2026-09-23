@@ -245,7 +245,7 @@ const n = D.dates.length, ns = D.stocks.length;
 const logIdx = D.dates.indexOf(D.rebalance.actual_date);
 let idx = n - 1, mode = 'realized', rbIdx = logIdx, scalePrev = false, tab = 'dash', fsort = 'weight';
 
-const STYLE_COLORS = { 'Valuation': '#2f5fd1', 'Earnings Quality': '#7a98e0', 'Historical Growth': '#17957a', 'Capital Efficiency': '#c98a1e',
+const STYLE_COLORS = { 'Valuation': '#2f5fd1', 'Earnings Quality': '#c94f9a', 'Historical Growth': '#17957a', 'Capital Efficiency': '#c98a1e',
   'Analyst Expectations': '#b8552f', 'Price Momentum': '#7b5cc7', 'Volatility': '#8a8f98', 'Size': '#3f9fc2' };
 const sc = (s) => STYLE_COLORS[s] || '#9aa0a6';
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();

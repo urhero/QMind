@@ -20,7 +20,9 @@ args = [a for a in sys.argv[1:] if not a.startswith("--")]
 BBG = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--bbg" and i + 1 < len(sys.argv)), None)
 ASOF = args[0] if args else str((pd.Timestamp.today().normalize() - pd.Timedelta(days=1)).date())
 GROSS = next((float(sys.argv[i + 1]) for i, a in enumerate(sys.argv) if a == "--gross" and i + 1 < len(sys.argv)), None)
+RB = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--rb" and i + 1 < len(sys.argv)), None)   # 교대일 가정 (로그 미변경)
 D = m.build(pd.Timestamp(ASOF))
+if RB: D["rebalance"] = {**D["rebalance"], "actual_date": RB, "source": "assumed"}
 BM = D["universe"]
 # --gross 0.19: 배포 gross 를 가정값으로 재스케일 (모든 비중·기여가 선형이라 배율 하나로 처리)
 K = (GROSS / D["gross_cur"]) if GROSS else 1.0
@@ -73,7 +75,7 @@ pct = lambda x, d=2: f"{x*100:+.{d}f}%"; pu = lambda x, d=2: f"{x*100:.{d}f}%"; 
 
 TITLE_NAME = {"MXWO": "QMIND KIC", "MXCN1A": "QMind BOK"}  # PDF 제목 표기 (사용자 지정 2026-09-21); 파일명·폴더는 유니버스 코드 유지
 fig.text(0.07, 0.955, f"{TITLE_NAME.get(BM, f'QMind {BM}')} MP 성과 분석", fontsize=14, weight="bold", color=INK)
-fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {D['rebalance']['actual_date']} 종가 교대) · 배포 비중(gross {D['gross_cur']*100:.0f}%) · USD · 기여 = NAV 대비", fontsize=8.5, color=MUTED)
+fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {D['rebalance']['actual_date']} 종가 교대{' 가정' if RB else ''}) · 배포 비중(gross {D['gross_cur']*100:.0f}%) · USD · 기여 = NAV 대비", fontsize=8.5, color=MUTED)
 fig.text(0.07, 0.905, f"MTD 기여  {bp(tot)}", fontsize=20, weight="bold", color=UP if tot > 0 else DOWN)
 
 def table(ax, title, header, rows, colw, colors=None, total_rows=0):
@@ -162,6 +164,6 @@ ax2 = fig.add_axes([0.31, 0.06, 0.42, 0.44])
 contrib_chart(ax2, [f"{f_}\n{fname.get(f_, '')[:30]}" for f_ in sel.index], list(sel.c * 1e4), [scol_(x) for x in sel["style"]], split_after=n_top)
 right_notes(ax2, [wfmt(FW.get(f_, 0.0), r.long, r.short) for f_, r in sel.iterrows()], "비중 (롱숏 평균)")
 out_dir = m.OUTPUT_DIR / D["book_date"] / "mtd_pdf"; out_dir.mkdir(parents=True, exist_ok=True)
-out = str(out_dir / f"mtd_style_factor{'_bmuniv' if A else ''}_{ASOF}{f'_gross{GROSS*100:.0f}' if GROSS else ''}.pdf")
+out = str(out_dir / f"mtd_style_factor{'_bmuniv' if A else ''}_{ASOF}{f'_gross{GROSS*100:.0f}' if GROSS else ''}{f'_rb{RB[5:7]}{RB[8:10]}' if RB else ''}.pdf")
 fig.savefig(out, format="pdf"); fig.savefig(out.replace(".pdf", ".png"), dpi=130)
 print("saved", out)
