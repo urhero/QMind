@@ -86,7 +86,7 @@ main.py (CLI)
 | `erc_shrinkage` / `ts_mom_scale` | 0.5 / 0.5 | 0.2 / 0.2 |
 | `min_coverage_pct` | 0 | 0.10 |
 | `sector_short_cap` | None | 0.15 |
-| `mp_target_gross` | 0.14 (롱 +7% / 숏 -7%, 2026-08-31 스냅샷부터; 이전은 배수 1.0) | 0.40 (롱 +20% / 숏 -20%) |
+| `mp_target_gross` | 0.14 (롱 +7% / 숏 -7%, 전 기간 소급 2026-09-17) | 0.40 (롱 +20% / 숏 -20%) |
 | `apply_country_tax` | False (A주는 등록지 무관하게 본토 인지세 대상 — 등록지 세율표 부적합) | True (COUNTRY_TAX_BPS, 실측 회계 전용) |
 | 출력 경로 | `output/MXCN1A/` | `output/MXWO/` |
 | 유니버스 종속 데이터 | `data/MXCN1A/` (+ `mp_target_gross.csv`) | `data/MXWO/` (+ `mp_target_gross.csv`, `mp_multiplier.csv`, `bm_returns.csv`, `bmwgt.parquet`, `country_map.parquet`) |
@@ -496,6 +496,98 @@ main.py
 | 52WSlope | 3.68% | Price Momentum |
 | TobinQ | 2.56% | Capital Efficiency |
 | 6MTTMSalesMom | 0.95% | Historical Growth |
+
+### 3.6 MTD 손익 스크립트 (`research/mtd_pnl.py`, 2026-09-17)
+
+파이프라인 밖의 독립 스크립트. 사용법은 README, 여기는 구현 규칙만.
+
+- **상장 선택** (`_pick_listing`): OpenFIGI 상장 리스트에서 (1) 도메사일(`country_map.parquet`) 본상장 exchCode 후보
+  `COUNTRY_EXCH` -> (2) `EXCH_PRIORITY` 순, 그 상장의 **composite FIGI** 를 저장. `US` 복합코드는 같은 티커가
+  UN/UW/UA(NYSE/Nasdaq/Amex) 에도 있을 때만 인정 — 없으면 OTC (예: Airbus `EADSF`) 이므로 제외.
+  요청은 `marketSecDes=Equity` (REIT 포함 — `Common Stock` 필터는 REIT 49개를 놓침). 도메사일과 본상장이 다른 소수
+  (Coca-Cola HBC CHE->LN, ArcelorMittal LUX->NA)는 가격 결측으로 드러나므로 `figi_map.csv` 에서 손으로 교체
+- **Bloomberg 식별자**: `/isin/<ISIN>` 은 터미널 기본 가격소스 때문에 미국 OTC 라인(KDDI -> `KDDIF US`)으로 풀린다.
+  `/bbgid/<composite FIGI>` 는 복합 상장(`9433 JP`)으로 정확히 풀림 — 반드시 후자 사용
+- **필드**: `TOT_RETURN_INDEX_GROSS_DVDS` 는 요청 구간 시작가에 리베이스된 배당 재투자 지수 (배당 없는 구간은 PX_LAST 와 동일).
+  끝/시작 비율 = 총수익률. USD 환산은 `HistoricalDataRequest` 의 `currency=USD` 오버라이드 (별도 요청 1회). 200 종목씩 청크
+- **기준가**: 날짜 정확 일치가 아니라 심볼별 "그 날짜 이하 마지막 거래일" (`asof_ret`, ffill). 국가별 휴일·시차 대응
+- **yfinance 기각 사유** (2026-09-17): 1,200 종목 다운로드를 몇 번 반복하자 429 rate limit (시간당 ~2,000 요청) 으로 수십 분
+  대기가 필요했고, 당일 실행 시 진행 중인 당일 봉이 섞여 들어와(end 배타 규칙 무시) 값이 흔들렸다 (CRDO -33.5% vs Bloomberg -28.6%).
+  Bloomberg 티커 != Yahoo 티커(북유럽 종류주 `ATCOA`/`ATCO-A.ST`, 싱가포르 코드) 보정도 필요했다. 매핑 파일이 NaN 으로
+  덮이는 사고가 있었으므로, 소스를 다시 바꿀 때도 "광역 실패 시 매핑 파일 불변" 가드는 유지할 것
+- **의존성**: `blpapi` (Bloomberg 전용 pip 인덱스, Pipfile `[[source]] bloomberg`), OpenFIGI 는 `requests` 직접 호출
+  (키 없으면 10건/요청·분당 25요청, `OPENFIGI_API_KEY` 는 100건/요청)
+- **MXCN1A**: 산출물 ticker 가 이미 Bloomberg 형식(`000001 CH Equity`) 이라 FIGI 매핑 없이 직접 조회 (`attach_securities`)
+
+#### 3.6.1 일별 대시보드 (`research/mtd_dashboard.py`, 2026-09-17)
+
+- **캐시 필드는 일수익률** `DAY_TO_DAY_TOT_RETURN_GROSS_DVDS` (%/100). 총수익지수는 요청 시작일에 리베이스되므로 증분
+  append 하면 기준이 어긋난다. 일수익률은 날짜별 독립이라 안전. 증분 기준은 캐시 최신일 (결측 종목이 있어도 전체 재조회 안 함)
+- **거래일 정의**: BM 지수(`{BENCHMARK} Index`)가 수익률을 찍는 날. 별도 달력 없음. 규칙 리밸런싱일 = 그 달 3번째 거래일
+- **두 북 이어붙임** (`stitch`): 종목 x 날짜 누적기여 행렬. 구간 A(<= 리밸런싱일) 는 전월 북 buy-and-hold 누적, 구간 B 는
+  A 말값(전월 북 종목에 고정) + 당월 북 누적. 손익은 NAV 대비 오버레이라 구간 합산이 가산적
+- **전월 북 로딩**: 구형 `total_aggregated_weights_*_mp*.csv` (style=='MP' 행) 도 읽는다 (`style` 파일 제외, isin NaN 행 제외).
+  배포 규모의 정본은 `mp_target_gross.csv` 이력 — 파일 gross 가 다르면 그 목표값으로 재스케일 (MXCN1A 7월 북 gross 94% -> 14%, 2026-09-17 전 기간 소급)
+- **HTML**: 데이터 JSON 을 템플릿(`mtd_dashboard_template.html`) 의 `/*__DATA__*/null` 자리에 주입. 종목 x 날짜 **일수익률**을
+  통째로 넣고(1,250 종목 x 22일 ~ 600KB) 이어붙임·분해는 JS 가 계산 -> 리밸런싱일을 월말/1영업일/.../N영업일로 바꿔 보며
+  타이밍 효과를 비교할 수 있다 (기본값 = 로그의 실제 일자, 다른 값이면 "가정" 배지). "전월 북 규모를 당월 gross 로 맞춤"
+  토글은 w_prev 에 gross_cur/gross_prev 를 곱한다 (MXCN1A 7월 북 gross 94% 처럼 배포 규모 기록이 의심될 때).
+  롱/숏 분류는 그 날짜의 활성 북 비중 부호. 스타일은 종목별 **부호 있는 스타일 비중**으로 같은 이어붙임을 계산.
+  **섹터 숏캡 적용 후** (2026-09-18): 캡·스무딩은 종목 MP 행에만 적용되고 팩터 행 `mp_ls_weight` 는 캡 전 값이므로,
+  종목별 비율 `ls_weight(캡 후, 배포 scale 포함) / Σ팩터 mp_ls_weight(캡 전)` 을 그 종목의 팩터·스타일 비중에 곱한다
+  (deploy_step=1.0 이라 정확, 블렌딩이 있으면 비례 배분 근사). 결과: 스타일·팩터 기여 합 == MP 기여 (오차 0).
+  표의 합계는 두 줄 — "netting 전"(스타일 간 상쇄 안 한 베팅 크기, 롱 28.45%) / "netting 후, MP"(실제 배포, 17%).
+  2026-09-17 채팅의 "롱/숏 각 8.48%" 는 팩터 간·캡 전 값이라 대시보드(6.49%)보다 크다.
+- **팩터 상하위 5**: 종목별 `{팩터 인덱스: 비중}` 희소 리스트(`f_prev`/`f_cur`, 두 북 합쳐 ~48k 항목, HTML ~1.5MB)를 넣고
+  스타일과 같은 이어붙임으로 팩터 기여 계산. 팩터->스타일 맵은 `load_book` 이 모듈 전역 `FACTOR_STYLE` 에 누적
+  (DataFrame.attrs 는 merge 에서 소실, dict 반환 apply 는 MultiIndex 로 펼쳐지므로 루프로 생성)
+- **종목명/팩터명**: 종목명은 Bloomberg `NAME`(`mtd_pnl.bdp`, ReferenceDataRequest) 을 `data/{BM}/security_names.csv` 에 캐시
+  (없는 sec 만 조회). 팩터는 `data/factor_info.csv` 의 `factorName`(영문 정식명, 전 팩터) 만 표 두 번째 줄에 표시 —
+  `factor_desc_kr.csv` 한글 설명은 40개만 있어 일관성 때문에 쓰지 않는다 (사용자 결정 2026-09-18)
+- **리포트 탭 레이아웃**: 화면과 인쇄가 같아야 하므로 반응형 클래스 대신 고정 열 (KPI `1fr 1fr 1fr 1.6fr 1fr`, 표는 한 열로 쌓기).
+  인쇄에서는 글자·여백만 축소. 수익률·기여는 KPI/표/차트 툴팁 모두 % 소수점 4자리
+- **현재 포트 탭** (2026-09-18, 구 iframe 내장 철회): `load_book` 이 북별 `factor_weight`(캡 후 배분) 를 `FACTOR_WEIGHT[날짜]` 에 담아
+  `factor_weight`/`factor_weight_prev`/`style_cap` 으로 내보내고, JS 가 `D.stocks` 의 `w_cur`/`style_cur` 로 섹터·종목 스타일 분해
+  (barmode=relative + 순노출 ◆), 스타일 배분(캡선), 전월 대비 팩터 델타(±15), 비중 순위 표를 그린다. 구 `service/report/dashboard.py`
+  의 '현재 포트/배팅' 섹션과 같은 정보를 같은 디자인으로 — 백테스트 섹션은 포함하지 않음 (사용자 선택). 조립 방향은 갱신 빈도 기준
+  (MTD 월 10~20회 > viz 월 1~2회) 이었으나 iframe 은 디자인 불일치로 기각
+- **배포 기준 통일** (2026-09-21 사용자 지정 '모든 비중·수익률 배포 기준'): (1) 팩터/스타일 '비중' = 배포 롱/숏 gross (JS 가 `f_cur`/`style_cur` 합산,
+  캡 후) — 팩터 배분 비율(factor_weight, 합 100%)은 현재 포트 탭의 캡 차트에만 남김. (2) 1M/3M/YTD/1Y = **현재 배포 비중으로 그 기간 보유 시 기여** (2026-09-21 재지정): JS 가 팩터별 현재 한쪽 다리 크기
+  (롱+|숏|)/2 x `factor_returns_matrix` 복리수익률(`factor_horizons`). MP 합계 = 팩터 합. 과거 실제 비중이 아니라 '지금 북을 그때 들고
+  있었다면' 이라 팩터 간 비교용. 대안(과거 실제 기여 = factor_contrib x 배포 배수)은 `deploy_multiplier_series()` 에 남겨 둠; 배수(월) = mp_target_gross.csv 목표 ÷ deploy_multiplier 스냅샷의 book_gross_before, 둘 다 계단식
+  ffill + 최초 이전 bfill (사용자 규칙). MXWO 8월 0.3999(기록값과 동일), 최초 이전 0.4455; MXCN1A 전 기간 ~0.15 (14% 소급과 일치).
+  (3) 현재 포트 탭 팩터 델타/순위도 배포 gross 기준 (전월 북은 그 달 배포 규모 그대로 — 규모 변경분이 델타에 포함)
+- **종목 기여 탭** (2026-09-21, Bloomberg PORT 캡처 참고): 설정 바 기간·기준 공유. 평균 비중 = Σ_t w_active(t)·drift / (idx+1)
+  (`avgWeight`: t<=k 전월 북 x G[t], 이후 당월 북 x G[t]/G[k+1]; 모델은 당월 북 x G[t]), 수익률 = G[idx+1]−1, 기여 = contribAt,
+  배포 비중·스타일 열 = 기준일의 **활성 북** (리밸런싱일 이전이면 전월 북 `style_prev` x 규모 맞춤 배수, 이후 당월 북 `style_cur`).
+  합계 기여 == MTD 실현. 검색·정렬·롱/숏 필터는 JS, 인쇄 제외. Bmrk/Alloc/Selec 열은 BM=0 이라 생략. 이 탭만 `main` 의
+  max-w-6xl 을 풀어 화면 전체 폭 사용(15열, 1,600px 에서 가로 스크롤 없음), 셀 11.5px/4px 로 촘촘하게
+- **Bloomberg PORT 대조 (2026-09-21, MXCN1A MTD 9/18)**: Bloomberg Active CTR 9.60bp vs 대시보드 2.90bp. 로컬(CNY) 수익률은 종목 단위로
+  일치(중앙값 차이 0bp) -> 계산 방식 차이가 아니라 **MP != AP**. 분해: 겹침 394종목 +4.44bp (부호 반대 50종목 -0.99, 크기 2배 이상 차이 88종목
+  +1.64, 나머지 +3.79 = 실제 매매 시점·일별 링크), Bloomberg 에만 있는 26종목 +2.16bp (월중 지수 편입 등), MP 에만 있는 종목 -0.10bp.
+  핵심 원인: Bloomberg 최적화 유니버스 = 실제 BM(소형주 제외)이라 MP 526종목 중 133종목(gross 3.6%p)이 AP 에 없음. 숏 절단은 1종목(무관).
+  분석 스크립트: scratchpad `cmp_bbg.py`/`cmp2.py`/`cmp3.py` (일회성, 저장소 밖)
+- **종목 기여 (임시) 탭** (2026-09-21): `bm_restrict()` — `bm_universe.csv` 밖 종목 비중 0, 남은 롱·숏을 각각 목표(gross/2)로 비례 조정
+  (사용자 지정: 롱숏 합이 0 이 안 되면 비례 조정). 종목별 배율을 스타일 열에도 곱함(`sb_prev/sb_cur`), 팩터 열은 없음. 조정 내역(`bm_adj`)을
+  탭 머리에 표시. 파일이 없는 유니버스(MXWO)는 탭 숨김. 결과 MXCN1A 9/18: 6.84bp (Bloomberg 9.60bp 와의 잔차는 AP 최적화·매매 시점)
+- **비중 표기 통일** (2026-09-23 사용자 지정): 대시보드 MTD·주간 리포트 탭의 스타일 표와 팩터 상하위 10 표, 한 장 PDF 의 스타일 표와
+  팩터 차트 주석 모두 `배분% (롱 / 숏)` 한 열 — 배분 = 팩터 배분 비율(factor_weight, 합 100%; 스타일은 그 합), 괄호 = 배포 롱/숏
+  소수점 1자리(섹터 숏캡 후). 2026-09-23 최종: 괄호는 **롱·|숏| 평균 한 값** `25.0% (3.9%)` — BM 유니버스 제한 후 팩터별 롱/숏이
+  어긋나므로(소형주 제외가 다리마다 달라 롱/|숏| 비율 0.77~1.58) 한쪽 다리 크기로 요약. 합계 netting 전 = `100.0% (Σ롱% / Σ숏%)`,
+  netting 후 = `(MP 롱% / 숏%)`. `wfmt()` 헬퍼 (JS·Python 동일 서식)
+- **한 장 PDF 레이아웃** (2026-09-23): 두 섹션이 같은 구조 — 왼쪽 가로 막대(기여 bp, 위가 1등, 막대 끝 라벨), 오른쪽 `비중 (롱 / 숏)` 주석
+  (`contrib_chart`/`right_notes` 공용). 스타일 섹션도 기여 내림차순, 합계 두 줄은 차트 아래 텍스트. 스타일 범례는 제목 아래 한 줄로 한 번만.
+  주의: 사용자가 PDF 를 뷰어에 열어 두면 PermissionError 로 덮어쓰기 실패 — 닫고 재실행
+- **MTD 탭 재구성** (2026-09-21 피드백 '난잡'): 스타일 차트+표 -> 표 하나(배분 막대·롱/숏·기여 막대), 팩터는 상·하위 10 (비중순/기여순)
+  + 지평 성과 열. 1W 기여 = 누적기여(idx) − 누적기여(idx−5) (이어붙임 그대로), 1M/3M/YTD/1Y = `factor_horizons()` 가
+  `factor_returns_matrix_*.csv`(백테스트 팩터 L/S 월수익률) 를 복리 — 마지막 월말까지이며 배포 북 기여와는 정의가 다르다 (표 머리에 명시).
+  국가·롱/숏 표는 `<details>` 로 접음. 설정 바를 헤더에 붙여 MTD·주간 리포트가 같은 상태임을 드러냄 (현재 포트 탭에선 숨김)
+- **디자인** (2026-09-18 사용자 피드백 '색·폰트', 톤 '깔끔한 리서치 리포트'): 라이트 기본(종이 배경 #f5f6f8, 잉크 #14171c, 파랑 포인트 #2f5fd1 하나),
+  다크는 토글. 카드 대신 얇은 괘선과 여백, KPI 는 divide-x 한 줄. 스타일 8색은 템플릿 `STYLE_COLORS` 단일 출처 (표 좌측 색띠·차트 공용)
+- **테마/인쇄**: 색은 전부 CSS 변수(`:root` 다크, `html.light` 라이트, `@media print` 라이트 강제). 토글은 localStorage
+  (`qmind-mtd-theme`, try/catch). Plotly 는 테마 전환 시 `relayout` 으로 폰트/그리드 색 재적용. 인쇄는 `.no-print`(선택기·슬라이더·토글)
+  숨김 + `.print-only` 머리글(유니버스·기준일·실현/모델/BM·리밸런싱) + `break-inside: avoid`, A4 세로 12mm 여백
+  검증: JS 시리즈가 파이썬 콘솔 값(실현 +0.2929% / 모델 +0.3573%)과 일치 (2026-09-17)
 
 ---
 

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QMind MTD 리포트</title>
+<meta name="description" content="MP 오버레이의 월중 실현 손익과 현재 포트 (Bloomberg 총수익 기준)">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css">
+<script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  fontFamily: { sans: ['Pretendard', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'Consolas', 'ui-monospace', 'monospace'] },
+  colors: { canvas: 'var(--canvas)', card: 'var(--card)', elev: 'var(--elev)', line: 'var(--line)', ink: 'var(--ink)',
+            muted: 'var(--muted)', muted2: 'var(--muted2)', accent: 'var(--accent)', up: 'var(--up)', down: 'var(--down)' },
+}}}
+</script>
+<style>
+  /* 리서치 리포트 톤: 밝은 종이 배경, 잉크 텍스트, 절제된 파랑 하나. 다크는 선택. */
+  :root { --canvas:#f5f6f8; --card:#ffffff; --elev:#eef0f3; --line:#e3e6ea; --ink:#14171c; --muted:#6b7280; --muted2:#4b5563;
+          --accent:#2f5fd1; --accent-ink:#ffffff; --up:#168a54; --down:#c23d4a; --grid:#eceef1; --zero:#c9ced6; color-scheme: light; }
+  html.dark { --canvas:#0f1216; --card:#161a20; --elev:#1f242c; --line:#262c35; --ink:#e8eaee; --muted:#8b93a1; --muted2:#b3b9c4;
+          --accent:#6b8fe6; --accent-ink:#0f1216; --up:#3bbf85; --down:#e0606b; --grid:#232932; --zero:#3a424d; color-scheme: dark; }
+  body { word-break: keep-all; -webkit-font-smoothing: antialiased; }
+  .num { font-variant-numeric: tabular-nums; }
+  .rule { border-top: 1px solid var(--line); }
+  h2.sec { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  h2.sec small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: .5rem; }
+  table { border-collapse: collapse; width: 100%; }
+  table th { font-weight: 500; color: var(--muted); font-size: 11.5px; padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  table th:first-child, table td:first-child { text-align: left; }
+  table td { padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 13px; text-align: right; white-space: nowrap; }
+  table td.l { text-align: left; white-space: normal; }
+  table tr.total td { font-weight: 600; border-top: 1.5px solid var(--ink); border-bottom: 0; }
+  .bar { position: relative; display: inline-block; height: 8px; border-radius: 2px; vertical-align: middle; }
+  .barcell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .barcell .track { width: 72px; height: 8px; position: relative; }
+  .seg button, #tabs button { padding: 6px 12px; font-size: 13px; color: var(--muted2); }
+  .seg button.on, #tabs button.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  select, input[type=range] { accent-color: var(--accent); }
+  select { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--line); color: var(--muted2); }
+  details summary { cursor: pointer; color: var(--muted2); font-size: 13px; }
+  table.ctr th { cursor: pointer; user-select: none; } table.ctr th.on { color: var(--ink); } table.ctr th.on::after { content: ' ▾'; } table.ctr th.on.asc::after { content: ' ▴'; }
+  table.ctr td, table.ctr th { padding: 4px 5px; font-size: 11.5px; }
+  table.ctr td.l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  table.ctr th { white-space: normal; line-height: 1.15; vertical-align: bottom; }
+  table.ctr thead th { position: sticky; top: 0; background: var(--canvas); z-index: 1; }
+  @media print {
+    :root { --canvas:#fff; --card:#fff; --elev:#f3f4f6; --line:#d9dde3; --ink:#111; --muted:#666; --muted2:#444; --accent:#2f5fd1; --up:#137a49; --down:#b0343f; --grid:#e5e7eb; --zero:#c9ced6; }
+    @page { size: A4 portrait; margin: 14mm 12mm; }
+    body { background:#fff !important; color:#111 !important; font-size: 11px; }
+    .no-print, #tab-dash, #tab-port, #tab-stocks, #tab-stocksbm, #ctrl { display: none !important; }
+    #tab-report { display: block !important; }
+    header { position: static !important; background: #fff !important; border: 0 !important; }
+    main { max-width: none !important; padding: 0 !important; }
+    section, .avoid { break-inside: avoid; page-break-inside: avoid; }
+    #tab-report .kpi-v { font-size: 15px !important; }
+    table td { padding: 4px 6px; font-size: 10.5px; } table th { font-size: 10px; }
+  }
+</style>
+</head>
+<body class="bg-canvas text-ink font-sans min-h-[100dvh]">
+
+<header class="sticky top-0 z-40 bg-canvas/95 backdrop-blur border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between gap-6">
+    <div class="flex items-center gap-3 shrink-0"><span class="font-semibold tracking-tight">QMind</span><span id="h-universe" class="chip font-mono"></span></div>
+    <nav id="tabs" class="no-print flex gap-1">
+      <button data-tab="dash" class="on">MTD</button>
+      <button data-tab="port">현재 포트</button>
+      <button data-tab="stocks">종목 기여</button>
+      <button data-tab="stocksbm" id="tab-btn-bm">종목 기여 (임시)</button>
+      <button data-tab="report">주간 리포트</button>
+    </nav>
+    <div class="flex items-center gap-3 shrink-0">
+      <span id="h-asof" class="text-xs text-muted font-mono num hidden sm:inline"></span>
+      <button id="btn-theme" class="no-print h-8 w-8 rounded-md border border-line flex items-center justify-center text-muted2 hover:text-ink" title="라이트/다크" aria-label="테마 전환"><iconify-icon id="ico-theme" icon="solar:moon-linear"></iconify-icon></button>
+      <button id="btn-print" class="no-print h-8 px-3 rounded-md bg-accent text-[var(--accent-ink)] text-sm font-medium flex items-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition"><iconify-icon icon="solar:printer-linear"></iconify-icon>인쇄</button>
+    </div>
+  </div>
+  <!-- 공통 설정 바: MTD 와 주간 리포트가 같은 상태를 공유한다는 것을 한눈에 -->
+  <div id="ctrl" class="no-print border-t border-line bg-card">
+    <div class="max-w-6xl mx-auto px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+      <span class="text-xs text-muted uppercase tracking-wider">설정 <span class="normal-case tracking-normal">· MTD 와 주간 리포트 공통</span></span>
+      <label class="flex items-center gap-2"><span class="text-xs text-muted">기준일</span><select id="date-select" class="font-mono num"></select></label>
+      <input id="date-range" type="range" min="0" max="0" value="0" class="w-40">
+      <div class="seg flex border border-line rounded-md overflow-hidden"><button data-mode="realized" class="on">실현</button><button data-mode="model">모델</button></div>
+      <label class="flex items-center gap-2"><span class="text-xs text-muted">리밸런싱</span><select id="rb-select" class="num"></select><span id="rb-badge" class="chip"></span></label>
+      <label class="flex items-center gap-2 text-xs text-muted2 cursor-pointer select-none"><input id="rb-scale" type="checkbox"><span>전월 북 규모 = 당월</span></label>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-6 py-10">
+
+<!-- ═══════════ MTD ═══════════ -->
+<div id="tab-dash" class="space-y-14">
+  <section>
+    <p class="text-xs uppercase tracking-[.18em] text-muted">Month-to-date · <span id="k-mode-label">실현</span> 기준 · USD</p>
+    <div class="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+      <span id="k-realized" class="text-6xl font-semibold tracking-tight num leading-none">--</span>
+      <span class="text-sm text-muted2"><span id="k-realized-date" class="num"></span> 종가 기준 · BM <span id="k-bm-name"></span> <span id="k-bm" class="num font-medium"></span></span>
+    </div>
+    <div class="mt-8 grid grid-cols-2 md:grid-cols-4 divide-x divide-line rule pt-5">
+      <div class="px-4 first:pl-0"><p class="text-xs text-muted">모델 (월말 리밸런싱 가정)</p><p id="k-model" class="mt-1 text-xl font-medium num">--</p></div>
+      <div class="px-4"><p class="text-xs text-muted">타이밍 효과 (실현 − 모델)</p><p id="k-timing" class="mt-1 text-xl font-medium num">--</p></div>
+      <div class="px-4"><p class="text-xs text-muted">전월 북 구간</p><p id="k-prevseg" class="mt-1 text-xl font-medium num">--</p></div>
+      <div class="px-4"><p class="text-xs text-muted">당월 북 구간</p><p id="k-curseg" class="mt-1 text-xl font-medium num">--</p></div>
+    </div>
+    <p id="rb-line" class="mt-3 text-xs text-muted2"></p>
+    <div class="mt-6 flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
+      <span class="text-xs text-muted">현재 배포 북을 그 기간 보유했다면 (팩터 L/S 월수익률 기준, <span id="k-h-asof"></span> 월말까지)</span>
+      <span>1M <b id="k-h-1M" class="num"></b></span><span>3M <b id="k-h-3M" class="num"></b></span><span>YTD <b id="k-h-YTD" class="num"></b></span><span>1Y <b id="k-h-1Y" class="num"></b></span>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">누적 손익 추이<small>MP 오버레이 %, BM 은 우축 · 선을 클릭하면 기준일이 바뀝니다</small></h2>
+    <div id="chart" class="mt-3" style="height:340px"></div>
+  </section>
+
+  <section>
+    <h2 class="sec">스타일<small>비중 = 팩터 배분 비율 (괄호 = 배포 롱·숏 평균, 섹터 숏캡 후) · 기여 = 기준일까지 누적</small></h2>
+    <table class="mt-3"><thead><tr><th>스타일</th><th>비중 (롱숏 평균)</th><th>기여</th></tr></thead><tbody id="t-style"></tbody></table>
+  </section>
+
+  <section>
+    <div class="flex items-end justify-between flex-wrap gap-3">
+      <h2 class="sec">팩터 상·하위 10<small>모두 배포 기준 · 1W·MTD = 실현 기여 · 1M~1Y = 현재 배포 비중으로 그 기간 보유했을 때의 기여 (팩터 L/S 월수익률 복리 x 현재 한쪽 다리 크기, <span id="h-asof-m"></span> 월말까지)</small></h2>
+      <div class="seg flex border border-line rounded-md overflow-hidden no-print" id="fsort"><button data-sort="weight" class="on">배포 gross순</button><button data-sort="contrib">기여순</button></div>
+    </div>
+    <table class="mt-3"><thead><tr><th>#</th><th>팩터</th><th>스타일</th><th>비중 (롱숏 평균)</th><th>MTD</th><th>1W</th><th>1M</th><th>3M</th><th>YTD</th><th>1Y</th></tr></thead>
+      <tbody id="t-fac-top"></tbody><tbody><tr><td colspan="10" class="l pt-4 pb-1 text-xs text-muted border-0">하위 10</td></tr></tbody><tbody id="t-fac-bottom"></tbody></table>
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-10">
+    <div>
+      <h2 class="sec">섹터<small>배포 비중 · 기여</small></h2>
+      <table class="mt-3"><thead><tr><th>섹터</th><th>롱</th><th>숏</th><th>기여</th></tr></thead><tbody id="t-sector"></tbody></table>
+    </div>
+    <div>
+      <h2 class="sec">종목 기여 상·하위 8</h2>
+      <table class="mt-3"><thead><tr><th>종목</th><th>비중</th><th>기여</th></tr></thead><tbody id="t-stocks"></tbody></table>
+    </div>
+  </section>
+  <details class="no-print"><summary>국가별 · 롱/숏 요약</summary>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-6 mt-3">
+      <table><thead><tr><th>국가</th><th>롱</th><th>숏</th><th>기여</th></tr></thead><tbody id="t-country"></tbody></table>
+      <table><thead><tr><th>사이드</th><th>비중</th><th>평균 수익</th><th>기여</th></tr></thead><tbody id="t-side"></tbody></table>
+    </div>
+  </details>
+</div>
+
+<!-- ═══════════ 현재 포트 ═══════════ -->
+<div id="tab-port" class="hidden space-y-12">
+  <section>
+    <p class="text-xs uppercase tracking-[.18em] text-muted">Current book · 배포 비중 (섹터 숏캡 적용 후)</p>
+    <div class="mt-3 flex flex-wrap items-baseline gap-x-8 gap-y-2"><span id="p-book" class="text-3xl font-semibold tracking-tight num">--</span><span id="p-book-sub" class="text-sm text-muted2"></span></div>
+  </section>
+  <section class="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-x-12 gap-y-10">
+    <div><h2 class="sec">스타일 배분 비율<small>팩터 비중 합 = 100%, 캡 <span id="p-cap"></span> · 규제 요건용 비율이며 배포 비중 아님</small></h2><div id="chart-alloc" class="mt-2" style="height:300px"></div></div>
+    <div><h2 class="sec">섹터 순노출<small>스타일 분해, ◆ = 순노출</small></h2><div id="chart-sector" class="mt-2" style="height:340px"></div></div>
+  </section>
+  <section><h2 class="sec">종목 순비중 상·하위 20<small>스타일 분해, ◆ = 순비중</small></h2><div id="chart-stocks" class="mt-2" style="height:920px"></div></section>
+  <section class="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-x-12 gap-y-10">
+    <div><h2 class="sec">팩터 배포 gross 변화<small id="p-delta-sub">전월 대비</small></h2><div id="chart-delta" class="mt-2" style="height:520px"></div></div>
+    <div><h2 class="sec">팩터 배포 gross 순위<small>롱+|숏|, 섹터 숏캡 적용 후</small></h2>
+      <div class="mt-3 max-h-[520px] overflow-auto border-y border-line"><table><thead class="sticky top-0 bg-canvas"><tr><th>#</th><th>팩터</th><th>스타일</th><th>롱</th><th>숏</th><th>전월 gross</th><th>변화</th></tr></thead><tbody id="t-rank"></tbody></table></div></div>
+  </section>
+</div>
+
+<!-- ═══════════ 종목 기여 (Bloomberg PORT 스타일: 롱숏 오버레이라 BM=0, MP = Active) ═══════════ -->
+<div id="tab-stocks" class="hidden space-y-6">
+  <section>
+    <p class="text-xs uppercase tracking-[.18em] text-muted">Stock contribution · 설정 바 기간 · 배포 기준 · USD</p>
+    <div class="mt-3 flex flex-wrap items-baseline gap-x-8 gap-y-2"><span id="s-total" class="text-3xl font-semibold tracking-tight num">--</span><span id="s-sub" class="text-sm text-muted2"></span></div>
+    <p class="mt-2 text-xs text-muted">평균 비중 = 기간 내 일별 보유 비중 평균(가격 드리프트·리밸런싱 교대 반영). 배포 비중·스타일 열 = 기준일의 활성 북(리밸런싱일 이전이면 전월 북, 이후 당월 북; 캡 후). 수익률 = 종목 총수익(USD). 기여 = 비중 x 수익 누적(NAV 대비). 롱숏 오버레이라 BM 비중·수익은 0, MP 가 곧 Active.</p>
+  </section>
+  <div class="no-print flex flex-wrap items-center gap-4 text-sm">
+    <input id="s-q" type="search" placeholder="티커 · 종목명 · 섹터 · 국가 검색" class="w-72 rounded-md border border-line bg-card px-3 py-1.5 text-sm">
+    <div class="seg flex border border-line rounded-md overflow-hidden" id="s-side"><button data-side="all" class="on">전체</button><button data-side="long">롱</button><button data-side="short">숏</button></div>
+    <span id="s-count" class="text-xs text-muted"></span>
+    <span class="text-xs text-muted">열 머리를 클릭하면 정렬</span>
+  </div>
+  <div class="overflow-auto border-y border-line" style="max-height: 75vh">
+    <table id="t-ctr" class="ctr"><thead id="t-ctr-head"></thead><tbody id="t-ctr-body"></tbody><tfoot id="t-ctr-foot"></tfoot></table>
+  </div>
+</div>
+
+<!-- ═══════════ 종목 기여 (임시): 실제 BM 유니버스로 제한 + 롱/숏 비례 조정 ═══════════ -->
+<div id="tab-stocksbm" class="hidden space-y-6">
+  <section>
+    <p class="text-xs uppercase tracking-[.18em] text-muted">Stock contribution · 실제 BM 유니버스 제한 (임시) · 설정 바 기간 · USD</p>
+    <div class="mt-3 flex flex-wrap items-baseline gap-x-8 gap-y-2"><span id="sb-total" class="text-3xl font-semibold tracking-tight num">--</span><span id="sb-sub" class="text-sm text-muted2"></span></div>
+    <div id="sb-adj" class="mt-3 text-xs text-muted2 space-y-1"></div>
+    <p class="mt-2 text-xs text-muted">MP 에서 Bloomberg BM(소형주 제외) 밖 종목을 뺀 뒤, 롱·숏 각각을 원래 목표 크기(gross/2)로 비례 조정한 비중. 유니버스는 data/{universe}/bm_universe.csv (Bloomberg PORT 내보내기에서 추출). 나머지 정의는 종목 기여 탭과 동일.</p>
+  </section>
+  <div class="no-print flex flex-wrap items-center gap-4 text-sm">
+    <input id="sb-q" type="search" placeholder="티커 · 종목명 · 섹터 · 국가 검색" class="w-72 rounded-md border border-line bg-card px-3 py-1.5 text-sm">
+    <div class="seg flex border border-line rounded-md overflow-hidden" id="sb-side"><button data-side="all" class="on">전체</button><button data-side="long">롱</button><button data-side="short">숏</button></div>
+    <span id="sb-count" class="text-xs text-muted"></span>
+  </div>
+  <div class="overflow-auto border-y border-line" style="max-height: 75vh">
+    <table id="t-ctrb" class="ctr"><thead id="t-ctrb-head"></thead><tbody id="t-ctrb-body"></tbody><tfoot id="t-ctrb-foot"></tfoot></table>
+  </div>
+</div>
+
+<!-- ═══════════ 주간 리포트 (MTD 탭과 같은 설정을 인쇄 형태로) ═══════════ -->
+<div id="tab-report" class="hidden space-y-8">
+  <div>
+    <p class="text-xs uppercase tracking-[.18em] text-muted">Weekly report · MTD 탭과 같은 설정</p>
+    <p class="mt-1 text-2xl font-semibold tracking-tight">QMind MTD <span id="p-universe" class="font-mono text-muted2 text-lg"></span></p>
+    <p id="p-sub" class="text-sm text-muted2 mt-1"></p>
+  </div>
+  <div class="grid divide-x divide-line rule pt-4" style="grid-template-columns: 1fr 1fr 1fr 1.6fr 1fr">
+    <div class="px-4 first:pl-0"><p class="text-xs text-muted">MTD 실현</p><p id="r-realized" class="kpi-v mt-1 text-xl font-medium num">--</p></div>
+    <div class="px-4"><p class="text-xs text-muted">모델 (월말 리밸런싱)</p><p id="r-model" class="kpi-v mt-1 text-xl font-medium num">--</p></div>
+    <div class="px-4"><p class="text-xs text-muted">타이밍 효과</p><p id="r-timing" class="kpi-v mt-1 text-xl font-medium num">--</p></div>
+    <div class="px-4"><p class="text-xs text-muted">롱 / 숏 기여</p><p id="r-side" class="kpi-v mt-1 text-base font-medium num whitespace-nowrap">--</p></div>
+    <div class="px-4"><p class="text-xs text-muted">BM</p><p id="r-bm" class="kpi-v mt-1 text-xl font-medium num">--</p></div>
+  </div>
+  <div id="chart-r" class="avoid" style="height:290px"></div>
+  <div class="avoid"><h2 class="sec">스타일<small>비중 = 팩터 배분 비율 (괄호 = 배포 롱·숏 평균) · 기여</small></h2><table class="mt-2"><thead><tr><th>스타일</th><th>비중 (롱숏 평균)</th><th>기여</th></tr></thead><tbody id="r-style"></tbody></table></div>
+  <div class="avoid"><h2 class="sec">팩터 상·하위 10<small id="r-fac-sub"></small></h2>
+    <table class="mt-2"><thead><tr><th>#</th><th>팩터</th><th>스타일</th><th>비중 (롱숏 평균)</th><th>MTD</th><th>1W</th><th>1M</th><th>3M</th><th>YTD</th><th>1Y</th></tr></thead>
+      <tbody id="r-fac-top"></tbody><tbody><tr><td colspan="10" class="l pt-3 pb-1 text-xs text-muted border-0">하위 10</td></tr></tbody><tbody id="r-fac-bottom"></tbody></table></div>
+  <p class="text-xs text-muted">수익률: Bloomberg 일별 총수익률(배당 재투자, USD). 실현 = 리밸런싱일 종가에 전월 북 → 당월 북 교대. 비중은 배포 규모 기준, 기여는 NAV 대비. 1M~1Y 는 현재 배포 비중(캡 후 한쪽 다리 크기)으로 그 기간 보유했을 때의 기여 = 팩터 L/S 월수익률 복리 x 현재 크기.</p>
+</div>
+
+<footer class="no-print text-xs text-muted rule pt-6 mt-16 pb-10">
+  수익률은 Bloomberg DAY_TO_DAY_TOT_RETURN_GROSS_DVDS(배당 재투자, USD 환산). 북 가치는 buy-and-hold. 실현 = 전월말~리밸런싱일 종가는 전월 북, 이후 당월 북. 모델 = 당월 북을 전월말부터 (백테스트 가정). 스타일·팩터 분해는 종목별 섹터 숏캡 비율을 팩터 비중에 배분한 값.
+</footer>
+</main>
+
+<script>
+const D = /*__DATA__*/null;
+const $ = (id) => document.getElementById(id);
+const pct = (x, d = 2) => (x >= 0 ? '+' : '') + (x * 100).toFixed(d) + '%';
+const pc = (x) => pct(x, 4);
+const pu = (x, d = 2) => (x * 100).toFixed(d) + '%';          // 부호 없는 비중
+const wfmt = (a, lo, sh) => `${(a * 100).toFixed(1)}% (${((lo - sh) / 2 * 100).toFixed(1)}%)`;   // 괄호 = 롱·|숏| 평균   // 배분% (배포 롱 / 숏)
+const cls = (x) => x > 0 ? 'text-up' : x < 0 ? 'text-down' : 'text-muted2';
+const n = D.dates.length, ns = D.stocks.length;
+const logIdx = D.dates.indexOf(D.rebalance.actual_date);
+let idx = n - 1, mode = 'realized', rbIdx = logIdx, scalePrev = false, tab = 'dash', fsort = 'weight';
+
+const STYLE_COLORS = { 'Valuation': '#2f5fd1', 'Earnings Quality': '#c94f9a', 'Historical Growth': '#17957a', 'Capital Efficiency': '#c98a1e',
+  'Analyst Expectations': '#b8552f', 'Price Momentum': '#7b5cc7', 'Volatility': '#8a8f98', 'Size': '#3f9fc2' };
+const sc = (s) => STYLE_COLORS[s] || '#9aa0a6';
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const stTag = (s) => `<span class="text-xs" style="color:${sc(s)}">${s}</span>`;
+// 인라인 막대: 양수 오른쪽, 음수 왼쪽 (0 기준 중앙)
+function bar(v, max, color) { const w = Math.min(Math.abs(v) / (max || 1) * 36, 36); const left = v >= 0 ? 36 : 36 - w;
+  return `<span class="track" style="display:inline-block;width:72px;height:8px;position:relative;vertical-align:middle"><span style="position:absolute;left:36px;top:0;bottom:0;width:1px;background:var(--zero)"></span><span style="position:absolute;left:${left}px;width:${w}px;top:0;bottom:0;border-radius:2px;background:${color}"></span></span>`; }
+function bar1(v, max, color) { const w = Math.min(v / (max || 1) * 72, 72);
+  return `<span style="display:inline-block;width:72px;height:8px;position:relative;vertical-align:middle;background:var(--elev);border-radius:2px"><span style="position:absolute;left:0;width:${w}px;top:0;bottom:0;border-radius:2px;background:${color}"></span></span>`; }
+
+// ── 계산: 누적성장 G[i][t] (전월말=1), 구간 (a,b] 성장 = G[b]/G[a]
+const G = D.ret.map(row => { const g = [1]; row.forEach(r => g.push(g[g.length - 1] * (1 + r))); return g; });
+const wPrev = () => scalePrev && D.gross_prev ? D.gross_cur / D.gross_prev : 1;
+function stitch(wp, wc, i, t, k, useModel) {
+  if (t < 0) return 0;
+  if (useModel || k < 0) return wc * (G[i][t + 1] - 1);
+  if (t <= k) return wp * (G[i][t + 1] - 1);
+  return wp * (G[i][k + 1] - 1) + wc * (G[i][t + 1] / G[i][k + 1] - 1);
+}
+const contribAt = (i, t, k, useModel) => stitch(D.stocks[i].w_prev * wPrev(), D.stocks[i].w_cur, i, t, k, useModel);
+function seriesFor(k) {
+  const model = [], realized = [], prevseg = [];
+  for (let t = 0; t < n; t++) { let m = 0, r = 0, p = 0;
+    for (let i = 0; i < ns; i++) { m += contribAt(i, t, k, true); r += contribAt(i, t, k, false); if (k >= 0) p += D.stocks[i].w_prev * wPrev() * (G[i][Math.min(t, k) + 1] - 1); }
+    model.push(m); realized.push(r); prevseg.push(p); }
+  return { model, realized, prevseg };
+}
+let S = seriesFor(rbIdx);
+
+// ── 헤더/테마/탭
+$('h-universe').textContent = D.universe; $('h-asof').textContent = `${D.base} → ${D.asof}`; $('p-universe').textContent = D.universe; $('k-bm-name').textContent = D.universe;
+$('h-asof-m').textContent = D.horizon_asof || '-';
+const KEY = 'qmind-mtd-theme';
+const getLS = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
+const setLS = (v) => { try { localStorage.setItem(KEY, v); } catch (e) {} };
+function plotTheme() { return { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { family: 'Pretendard, system-ui', color: css('--muted2'), size: 12 },
+    xaxis: { gridcolor: css('--grid'), zerolinecolor: css('--zero'), linecolor: css('--line') }, yaxis: { gridcolor: css('--grid'), zerolinecolor: css('--zero') } }; }
+function applyTheme(dark) { document.documentElement.classList.toggle('dark', dark); $('ico-theme').setAttribute('icon', dark ? 'solar:sun-2-linear' : 'solar:moon-linear'); drawAll(); }
+$('btn-theme').onclick = () => { const dark = !document.documentElement.classList.contains('dark'); setLS(dark ? 'dark' : 'light'); applyTheme(dark); };
+function showTab(t) { tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  ['dash', 'port', 'stocks', 'stocksbm', 'report'].forEach(x => $('tab-' + x).classList.toggle('hidden', x !== t));
+  document.querySelector('main').classList.toggle('max-w-6xl', !(t === 'stocks' || t === 'stocksbm'));   // 종목 기여 탭은 화면 전체 폭
+  $('ctrl').classList.toggle('hidden', t === 'port');   // 설정 바는 MTD·주간 리포트에서만
+  drawAll(); }
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+$('btn-print').onclick = () => { showTab('report'); setTimeout(() => window.print(), 200); };
+window.addEventListener('beforeprint', () => { window.__dark = document.documentElement.classList.contains('dark'); document.documentElement.classList.remove('dark'); drawAll(); });
+window.addEventListener('afterprint', () => { if (window.__dark) document.documentElement.classList.add('dark'); drawAll(); });
+
+// ── 선택기
+const sel = $('date-select'), rng = $('date-range'), rbSel = $('rb-select');
+D.dates.forEach((d, i) => { const o = document.createElement('option'); o.value = i; o.textContent = d; sel.appendChild(o); });
+rng.max = n - 1; rng.value = idx; sel.value = idx;
+sel.onchange = () => setIdx(+sel.value); rng.oninput = () => setIdx(+rng.value);
+[['-1', `월말 종가 (${D.base})`], ...D.dates.map((d, i) => [String(i), `${i + 1}영업일 (${d})`])].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; rbSel.appendChild(o); });
+rbSel.value = String(rbIdx);
+rbSel.onchange = () => { rbIdx = +rbSel.value; S = seriesFor(rbIdx); drawAll(); };
+$('rb-scale').onchange = (e) => { scalePrev = e.target.checked; S = seriesFor(rbIdx); drawAll(); };
+document.querySelectorAll('.seg button[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; document.querySelectorAll('.seg button[data-mode]').forEach(x => x.classList.toggle('on', x === b)); drawAll(); });
+document.querySelectorAll('#fsort button').forEach(b => b.onclick = () => { fsort = b.dataset.sort; document.querySelectorAll('#fsort button').forEach(x => x.classList.toggle('on', x === b)); render(); });
+function setIdx(i) { if (i < 0) return; idx = i; sel.value = i; rng.value = i; if (tab === 'stocks' || tab === 'stocksbm') drawAll(); else { drawCum(); render(); } }
+
+// ── 누적 차트
+const cfg = { displayModeBar: false, responsive: true };
+function cumTraces() { return [
+  { x: D.dates, y: S.realized.map(v => v * 100), name: '실현', line: { color: css('--accent'), width: 2.5 }, hovertemplate: '%{y:+.4f}%<extra>실현</extra>' },
+  { x: D.dates, y: S.model.map(v => v * 100), name: '모델 (월말 리밸런싱)', line: { color: css('--muted'), width: 1.5, dash: 'dot' }, hovertemplate: '%{y:+.4f}%<extra>모델</extra>' },
+  { x: D.dates, y: S.prevseg.map(v => v * 100), name: '전월 북 구간', line: { color: css('--zero'), width: 1.5 }, hovertemplate: '%{y:+.4f}%<extra>전월 북</extra>' },
+  { x: D.dates, y: D.bm_cum.map(v => v * 100), name: `BM ${D.universe} (우축)`, yaxis: 'y2', line: { color: css('--up'), width: 1.2 }, opacity: .7, hovertemplate: '%{y:+.4f}%<extra>BM</extra>' } ]; }
+function cumLayout(compact) { const t = plotTheme();
+  const shapes = [{ type: 'line', x0: D.dates[idx], x1: D.dates[idx], y0: 0, y1: 1, yref: 'paper', line: { color: css('--ink'), width: 1 } }], ann = [];
+  if (rbIdx >= 0) { shapes.push({ type: 'line', x0: D.dates[rbIdx], x1: D.dates[rbIdx], y0: 0, y1: 1, yref: 'paper', line: { color: css('--down'), width: 1, dash: 'dash' } });
+    ann.push({ x: D.dates[rbIdx], y: 1, yref: 'paper', text: '리밸런싱', showarrow: false, xanchor: 'left', yanchor: 'top', font: { color: css('--down'), size: 11 } }); }
+  return { ...t, margin: { l: 52, r: 52, t: 8, b: compact ? 34 : 44 }, hovermode: 'x unified', legend: { orientation: 'h', y: -0.16, font: { size: 11 } },
+    xaxis: { ...t.xaxis, showspikes: true, spikecolor: css('--muted'), spikethickness: 1, spikedash: 'solid' }, yaxis: { ...t.yaxis, ticksuffix: '%', tickformat: '.2f', hoverformat: '+.4f' },
+    yaxis2: { overlaying: 'y', side: 'right', showgrid: false, ticksuffix: '%', tickformat: '.2f', hoverformat: '+.4f', zeroline: false }, shapes, annotations: ann }; }
+let clickBound = false;
+function drawCum() { Plotly.react('chart', cumTraces(), cumLayout(false), cfg);
+  if (!clickBound) { clickBound = true; $('chart').on('plotly_click', (e) => setIdx(D.dates.indexOf(e.points[0].x))); }
+  if (tab === 'report') Plotly.react('chart-r', cumTraces(), cumLayout(true), cfg); }
+
+// ── MTD 분해
+function row(cells, cl = '') { return `<tr class="${cl}">${cells.map(c => `<td class="${c.c || ''} ${c.l ? 'l' : 'num font-mono'}">${c.v}</td>`).join('')}</tr>`; }
+function render() {
+  const useModel = mode === 'model', afterRb = useModel || rbIdx < 0 || idx > rbIdx, k = rbIdx;
+  const rows = D.stocks.map((s, i) => ({ ...s, w: afterRb ? s.w_cur : s.w_prev * wPrev(), c: contribAt(i, idx, k, useModel) })).filter(r => r.w !== 0 || r.c !== 0);
+  const total = rows.reduce((a, r) => a + r.c, 0);
+  const rz = S.realized[idx], md = S.model[idx], ps = S.prevseg[idx], bm = D.bm_cum[idx];
+  const isLog = k === logIdx, manual = D.rebalance.source === 'manual';
+  const set = (id, v) => { const e = $(id); e.textContent = pc(v); e.className = e.className.replace(/text-(up|down|muted2)/g, '').trim() + ' ' + cls(v); };
+  set('k-realized', useModel ? md : rz); set('k-model', md); set('k-timing', rz - md); set('k-prevseg', ps); set('k-curseg', rz - ps); set('k-bm', bm);
+  $('k-mode-label').textContent = useModel ? '모델' : '실현'; $('k-realized-date').textContent = D.dates[idx];
+  $('rb-line').innerHTML = `리밸런싱 <b class="num">${k >= 0 ? D.dates[k] : '월말'}</b> · ${isLog ? (manual ? '로그 (수동 지정)' : '로그 (규칙: 3번째 거래일)') : `<span class="text-down">가정</span> (로그 ${D.rebalance.actual_date})`} · 전월 북 ${D.prev_book_date || '-'} gross ${(D.gross_prev * 100).toFixed(0)}% → 당월 북 ${D.book_date} gross ${(D.gross_cur * 100).toFixed(0)}%${scalePrev ? ' (전월 규모를 당월과 맞춤)' : ''}`;
+  $('rb-badge').textContent = isLog ? '로그' : '가정'; $('rb-badge').style.color = isLog ? '' : css('--down');
+
+  // 롱/숏, 섹터, 국가
+  const side = (f, name) => { const g = rows.filter(f); const w = g.reduce((a, r) => a + r.w, 0), c = g.reduce((a, r) => a + r.c, 0);
+    const avg = g.length ? g.reduce((a, r) => a + (r.w ? r.c / r.w : 0), 0) / g.length : 0; return row([{ v: name, l: 1 }, { v: pct(w) }, { v: pc(avg), c: cls(avg) }, { v: pc(c), c: cls(c) }]); };
+  $('t-side').innerHTML = side(r => r.w > 0, '롱') + side(r => r.w < 0, '숏') + row([{ v: '합계 (gross)', l: 1 }, { v: pu(rows.reduce((a, r) => a + Math.abs(r.w), 0)) }, { v: '' }, { v: pc(total), c: cls(total) }], 'total');
+  const group = (key) => { const m = {}; rows.forEach(r => { const g = m[r[key]] || (m[r[key]] = { long: 0, short: 0, c: 0 }); if (r.w > 0) g.long += r.w; else if (r.w < 0) g.short += r.w; g.c += r.c; }); return m; };
+  const sorted = (m) => Object.entries(m).sort((a, b) => b[1].c - a[1].c);
+  const secs = sorted(group('sector')), secMax = Math.max(...secs.map(([, g]) => Math.abs(g.c)), 1e-9);
+  $('t-sector').innerHTML = secs.map(([kk, g]) => row([{ v: kk, l: 1 }, { v: pct(g.long) }, { v: pct(g.short) }, { v: `<span class="barcell">${bar(g.c, secMax, g.c >= 0 ? css('--up') : css('--down'))}<span class="${cls(g.c)}">${pc(g.c)}</span></span>` }])).join('');
+  $('t-country').innerHTML = sorted(group('country')).filter(([, g]) => g.long - g.short > 0.005).map(([kk, g]) => row([{ v: kk, l: 1 }, { v: pct(g.long) }, { v: pct(g.short) }, { v: pc(g.c), c: cls(g.c) }])).join('');
+
+  // 스타일 / 팩터: 부호 있는 비중으로 같은 이어붙임 (기준일 idx 와 1주 전 idx-5)
+  const st = {}; D.styles.forEach(s => st[s] = { long: 0, short: 0, c: 0 });
+  const fc = D.factors.map(() => ({ long: 0, short: 0, c: 0, w1: 0 }));
+  const i5 = idx - 5;
+  D.stocks.forEach((s, i) => {
+    const sp = s.style_prev || {}, scu = s.style_cur || {};
+    new Set([...Object.keys(sp), ...Object.keys(scu)]).forEach(kk => { if (!st[kk]) return; const wp = (sp[kk] || 0) * wPrev(), wc = scu[kk] || 0, wa = afterRb ? wc : wp;
+      if (wa > 0) st[kk].long += wa; else if (wa < 0) st[kk].short += wa; st[kk].c += stitch(wp, wc, i, idx, k, useModel); });
+    const mp = new Map(s.f_prev || []), mc = new Map(s.f_cur || []);
+    new Set([...mp.keys(), ...mc.keys()]).forEach(fi => { const wp = (mp.get(fi) || 0) * wPrev(), wc = mc.get(fi) || 0, wa = afterRb ? wc : wp;
+      if (wa > 0) fc[fi].long += wa; else if (wa < 0) fc[fi].short += wa; const c = stitch(wp, wc, i, idx, k, useModel); fc[fi].c += c; fc[fi].w1 += c - stitch(wp, wc, i, i5, k, useModel); });
+  });
+  // 스타일 배분 (팩터 비중 합, 활성 북)
+  const fwAct = afterRb ? D.factor_weight : (Object.keys(D.factor_weight_prev || {}).length ? D.factor_weight_prev : D.factor_weight);
+  const alloc = {}; Object.entries(fwAct).forEach(([f, w]) => { const s = D.factor_style[f] || '기타'; alloc[s] = (alloc[s] || 0) + w; });
+  const stRows = Object.entries(st).filter(([kk, g]) => g.long || g.short).sort((a, b) => (b[1].long - b[1].short) - (a[1].long - a[1].short));
+  const stTot = stRows.reduce((a, [, g]) => ({ long: a.long + g.long, short: a.short + g.short, c: a.c + g.c }), { long: 0, short: 0, c: 0 });
+  const mpLong = rows.filter(r => r.w > 0).reduce((a, r) => a + r.w, 0), mpShort = rows.filter(r => r.w < 0).reduce((a, r) => a + r.w, 0);
+  const cMax = Math.max(...stRows.map(([, g]) => Math.abs(g.c)), 1e-9);
+  const styleHtml = stRows.map(([kk, g]) => row([{ v: `<span style="border-left:3px solid ${sc(kk)};padding-left:8px">${kk}</span>`, l: 1 },
+      { v: wfmt(alloc[kk] || 0, g.long, g.short) },
+      { v: `<span class="barcell">${bar(g.c, cMax, g.c >= 0 ? css('--up') : css('--down'))}<span class="${cls(g.c)}">${pc(g.c)}</span></span>` }])).join('') +
+    row([{ v: '합계 (netting 전)', l: 1 }, { v: wfmt(Object.values(alloc).reduce((a, b) => a + b, 0), stTot.long, stTot.short) }, { v: pc(stTot.c), c: cls(stTot.c) }], 'total') +
+    row([{ v: '합계 (netting 후 = MP)', l: 1 }, { v: `(${((mpLong - mpShort) / 2 * 100).toFixed(1)}%)` }, { v: pc(total), c: cls(total) }], 'total');
+  $('k-h-asof').textContent = D.horizon_asof || '-';
+  $('t-style').innerHTML = styleHtml; $('r-style').innerHTML = styleHtml;
+
+  // 팩터 표: 비중순 / 기여순 상하위 10, 지평 성과
+  const HZ = ['1M', '3M', 'YTD', '1Y'];
+  const facAll = D.factors.map((f, i) => { const g = fc[i].long - fc[i].short, R = (D.factor_horizon || {})[f] || {}, h = {};
+    HZ.forEach(k => h[k] = R[k] == null ? null : g / 2 * R[k]);   // 현재 배포 한쪽 다리 크기 x 그 기간 팩터 L/S 복리수익률
+    return { f, s: D.factor_style[f] || '', ...fc[i], g, h }; }).filter(r => r.g > 0 || r.c);
+  const mpH = {}; HZ.forEach(k => mpH[k] = facAll.reduce((a, r) => a + (r.h[k] || 0), 0));
+  HZ.forEach(k => { const e = $('k-h-' + k); e.textContent = pc(mpH[k]); e.className = 'num ' + cls(mpH[k]); });
+  const key = fsort === 'weight' ? 'g' : 'c';
+  const ordered = [...facAll].sort((a, b) => b[key] - a[key]);
+  const hv = (v) => v == null ? '<span class="text-muted">–</span>' : `<span class="${cls(v)}">${pc(v)}</span>`;
+  const facRow = (r, i) => row([{ v: i + 1, l: 1 }, { v: `<span class="font-medium">${r.f}</span><br><span class="text-muted text-xs">${D.factor_name[r.f] || ''}</span>`, l: 1 }, { v: stTag(r.s), l: 1 },
+    { v: wfmt(fwAct[r.f] || 0, r.long, r.short) }, { v: pc(r.c), c: cls(r.c) }, { v: pc(r.w1), c: cls(r.w1) }, { v: hv(r.h['1M']) }, { v: hv(r.h['3M']) }, { v: hv(r.h['YTD']) }, { v: hv(r.h['1Y']) }]);
+  const topH = ordered.slice(0, 10).map(facRow).join(''), botH = ordered.slice(-10).reverse().map((r, i) => facRow(r, ordered.length - 10 + i)).join('');
+  $('t-fac-top').innerHTML = topH; $('t-fac-bottom').innerHTML = botH; $('r-fac-top').innerHTML = topH; $('r-fac-bottom').innerHTML = botH;
+  $('r-fac-sub').textContent = `${fsort === 'weight' ? '배포 gross순' : '기여순'} · 배포 기준 · 1W·MTD 실현 · 1M~1Y = 현재 배포 비중으로 그 기간 보유 시 기여 (${D.horizon_asof || '-'} 월말까지)`;
+
+  // 종목
+  const byC = [...rows].sort((a, b) => b.c - a.c), sMax = Math.max(Math.abs(byC[0]?.c || 0), Math.abs(byC[byC.length - 1]?.c || 0), 1e-9);
+  const stockRow = (r) => row([{ v: `<span class="font-medium">${r.ticker || r.isin}</span> <span class="text-muted2 text-xs">${(r.name || '').slice(0, 26)}</span> <span class="text-muted text-xs">· ${r.sector}</span>`, l: 1 }, { v: pct(r.w) },
+    { v: `<span class="barcell">${bar(r.c, sMax, r.c >= 0 ? css('--up') : css('--down'))}<span class="${cls(r.c)}">${pc(r.c)}</span></span>` }]);
+  $('t-stocks').innerHTML = byC.slice(0, 8).map(stockRow).join('') + `<tr><td colspan="3" class="l pt-3 pb-1 text-xs text-muted border-0">하위 8</td></tr>` + byC.slice(-8).reverse().map(stockRow).join('');
+
+  // 리포트 탭 (같은 상태)
+  const lc = rows.filter(r => r.w > 0).reduce((a, r) => a + r.c, 0), scc = rows.filter(r => r.w < 0).reduce((a, r) => a + r.c, 0);
+  set('r-realized', rz); set('r-model', md); set('r-timing', rz - md); set('r-bm', bm);
+  $('r-side').innerHTML = `<span class="${cls(lc)}">${pc(lc)}</span> / <span class="${cls(scc)}">${pc(scc)}</span>`;
+  $('p-sub').textContent = `${D.base} → ${D.dates[idx]} · 리밸런싱 ${k >= 0 ? D.dates[k] : '월말'} (${isLog ? '로그' : '가정'}) · ${useModel ? '모델' : '실현'} 기준 · 전월 북 ${D.prev_book_date || '-'} / 당월 북 ${D.book_date}`;
+}
+
+// ── 종목 기여 탭 (설정 바 기간, 배포 기준). bm=true 면 실제 BM 유니버스 제한본(임시 탭)
+let sKey = 'c', sAsc = false, sSide = 'all', sbKey = 'c', sbAsc = false, sbSide = 'all';
+$('s-q').oninput = () => renderStocks(false); $('sb-q').oninput = () => renderStocks(true);
+document.querySelectorAll('#s-side button').forEach(b => b.onclick = () => { sSide = b.dataset.side; document.querySelectorAll('#s-side button').forEach(x => x.classList.toggle('on', x === b)); renderStocks(false); });
+document.querySelectorAll('#sb-side button').forEach(b => b.onclick = () => { sbSide = b.dataset.side; document.querySelectorAll('#sb-side button').forEach(x => x.classList.toggle('on', x === b)); renderStocks(true); });
+if (!(D.bm_adj && D.bm_adj.enabled)) $('tab-btn-bm').style.display = 'none';
+function avgWeightW(i, wp, wc, k, useModel) {   // 기간 동안 날마다 들고 있던 비중의 평균 (드리프트·교대 반영)
+  let sum = 0;
+  for (let t = 0; t <= idx; t++) { if (useModel || k < 0) sum += wc * G[i][t]; else if (t <= k) sum += wp * G[i][t]; else sum += wc * G[i][t] / G[i][k + 1]; }
+  return sum / (idx + 1);
+}
+function renderStocks(bm) {
+  const useModel = mode === 'model', k = rbIdx, afterRb = useModel || k < 0 || idx > k, pv = wPrev();
+  const STY = D.styles, P = bm ? 'sb' : 's', T = bm ? 't-ctrb' : 't-ctr';
+  const rows = D.stocks.map((s, i) => { const wp = (bm ? s.wb_prev : s.w_prev) * pv, wc = bm ? s.wb_cur : s.w_cur;
+    const spr = {}; Object.entries((bm ? s.sb_prev : s.style_prev) || {}).forEach(([x, v]) => spr[x] = v * pv);
+    return { i, t: s.ticker || s.isin, name: s.name || '', sector: s.sector, country: s.country, aw: avgWeightW(i, wp, wc, k, useModel), w: afterRb ? wc : wp,
+      r: G[i][idx + 1] - 1, c: stitch(wp, wc, i, idx, k, useModel), st: afterRb ? ((bm ? s.sb_cur : s.style_cur) || {}) : spr }; })
+    .filter(r => r.aw !== 0 || r.w !== 0 || r.c !== 0);
+  const q = $(P + '-q').value.trim().toLowerCase(), side = bm ? sbSide : sSide, key = bm ? sbKey : sKey, asc = bm ? sbAsc : sAsc;
+  let view = rows.filter(r => !q || [r.t, r.name, r.sector, r.country].join(' ').toLowerCase().includes(q));
+  if (side === 'long') view = view.filter(r => r.w > 0); else if (side === 'short') view = view.filter(r => r.w < 0);
+  const val = (r, kk) => kk.startsWith('st:') ? (r.st[kk.slice(3)] || 0) : r[kk];
+  view.sort((a, b) => { const x = val(a, key), y = val(b, key); const d = typeof x === 'string' ? x.localeCompare(y) : x - y; return asc ? d : -d; });
+  const cols = [['t', '종목', 1], ['sector', '섹터', 1], ['country', '국가', 1], ['aw', '평균 비중'], ['w', '배포 비중'], ['r', '수익률'], ['c', '기여 (CTR)'], ...STY.map(x => ['st:' + x, x])];
+  $(T + '-head').innerHTML = `<tr>${cols.map(([kk, lab]) => `<th data-key="${kk}" class="${kk === key ? 'on' + (asc ? ' asc' : '') : ''}" ${kk.startsWith('st:') ? `style="color:${sc(kk.slice(3))}"` : ''}>${lab}</th>`).join('')}</tr>`;
+  document.querySelectorAll('#' + T + '-head th').forEach(th => th.onclick = () => { const kk = th.dataset.key; const isStr = ['t', 'sector', 'country'].includes(kk);
+    if (bm) { if (sbKey === kk) sbAsc = !sbAsc; else { sbKey = kk; sbAsc = isStr; } } else { if (sKey === kk) sAsc = !sAsc; else { sKey = kk; sAsc = isStr; } } renderStocks(bm); });
+  const cell = (v, f) => v === 0 || v == null ? `<td class="num font-mono text-muted">·</td>` : `<td class="num font-mono ${f === pc ? cls(v) : ''}">${f(v)}</td>`;
+  $(T + '-body').innerHTML = view.map(r => `<tr><td class="l"><span class="font-medium">${r.t}</span> <span class="text-muted2 text-xs">${r.name.slice(0, 28)}</span></td><td class="l text-xs text-muted2">${r.sector}</td><td class="l text-xs text-muted2">${r.country}</td>` +
+    cell(r.aw, (v) => pct(v)) + cell(r.w, (v) => pct(v)) + cell(r.r, (v) => pct(v)) + cell(r.c, pc) + STY.map(x => cell(r.st[x] || 0, (v) => pct(v))).join('') + '</tr>').join('');
+  const sum = (kk) => view.reduce((a, r) => a + val(r, kk), 0), gross = (kk) => view.reduce((a, r) => a + Math.abs(val(r, kk)), 0);
+  $(T + '-foot').innerHTML = `<tr class="total"><td class="l">합계 (순)</td><td></td><td class="l text-xs text-muted">${view.length}종목</td><td class="num font-mono">${pct(sum('aw'))}</td><td class="num font-mono">${pct(sum('w'))}</td><td></td><td class="num font-mono ${cls(sum('c'))}">${pc(sum('c'))}</td>${STY.map(x => `<td class="num font-mono">${pct(sum('st:' + x))}</td>`).join('')}</tr>` +
+    `<tr class="total"><td class="l">gross</td><td></td><td></td><td class="num font-mono">${pu(gross('aw'))}</td><td class="num font-mono">${pu(gross('w'))}</td><td></td><td></td>${STY.map(x => `<td class="num font-mono">${pu(gross('st:' + x))}</td>`).join('')}</tr>`;
+  const total = rows.reduce((a, r) => a + r.c, 0);
+  $(P + '-total').textContent = pc(total); $(P + '-total').className = 'text-3xl font-semibold tracking-tight num ' + cls(total);
+  $(P + '-sub').textContent = `${D.base} → ${D.dates[idx]} · ${useModel ? '모델' : '실현'} · 리밸런싱 ${k >= 0 ? D.dates[k] : '월말'} · 활성 북 ${afterRb ? D.book_date : D.prev_book_date} · ${rows.length}종목`;
+  $(P + '-count').textContent = view.length === rows.length ? '' : `${view.length} / ${rows.length}종목 표시`;
+  if (bm) {
+    const A = D.bm_adj, line = (lab, a, bookDate) => !a || !a.n_book ? '' : `<p><b>${lab} (${bookDate})</b> BM 유니버스 ${a.n_univ}종목 · MP ${a.n_book}종목 중 유니버스 밖 <b>${a.n_removed}</b>종목 제외 (롱 ${pct(a.removed_long)}, 숏 ${pct(a.removed_short)}) → 남은 롱 ${pu(a.long_before)} / 숏 ${pu(a.short_before)} 을 각 ${pu(a.target)} 로 조정: <b>롱 x${a.scale_long.toFixed(3)}, 숏 x${a.scale_short.toFixed(3)}</b></p>`;
+    $('sb-adj').innerHTML = line('당월 북', A.cur, D.book_date) + line('전월 북', A.prev, D.prev_book_date || '-');
+  }
+}
+
+// ── 현재 포트 탭
+function drawPort() {
+  const t = plotTheme();
+  $('p-book').textContent = `${D.book_date} 북`;
+  $('p-book-sub').textContent = `gross ${(D.gross_cur * 100).toFixed(0)}% (롱 ${(D.gross_cur * 50).toFixed(0)} / 숏 ${(D.gross_cur * 50).toFixed(0)}) · ${D.n_cur}종목 · 팩터 ${Object.keys(D.factor_weight).length}개 · 전월 북 ${D.prev_book_date || '-'}`;
+  $('p-cap').textContent = (D.style_cap * 100).toFixed(0) + '%';
+  const alloc = {}; Object.entries(D.factor_weight).forEach(([f, w]) => { const s = D.factor_style[f] || '기타'; alloc[s] = (alloc[s] || 0) + w; });
+  const al = Object.entries(alloc).sort((a, b) => b[1] - a[1]);
+  Plotly.react('chart-alloc', [{ type: 'bar', orientation: 'h', x: al.map(([, v]) => v * 100), y: al.map(([k]) => k), marker: { color: al.map(([k]) => sc(k)) }, text: al.map(([, v]) => (v * 100).toFixed(1) + '%'), textposition: 'outside', hovertemplate: '%{y} %{x:.2f}%<extra></extra>' }],
+    { ...t, margin: { l: 130, r: 48, t: 4, b: 28 }, xaxis: { ...t.xaxis, ticksuffix: '%', range: [0, Math.max(D.style_cap * 100 * 1.15, ...al.map(([, v]) => v * 100 * 1.2))] }, yaxis: { autorange: 'reversed' }, bargap: .35,
+      shapes: [{ type: 'line', x0: D.style_cap * 100, x1: D.style_cap * 100, y0: 0, y1: 1, yref: 'paper', line: { color: css('--down'), width: 1, dash: 'dash' } }],
+      annotations: [{ x: D.style_cap * 100, y: 1, yref: 'paper', text: `캡 ${(D.style_cap * 100).toFixed(0)}%`, showarrow: false, xanchor: 'left', yanchor: 'bottom', font: { size: 11, color: css('--down') } }] }, cfg);
+  const secMap = {}; D.stocks.forEach(s => { if (!s.w_cur) return; const g = secMap[s.sector] || (secMap[s.sector] = { net: 0, st: {} }); g.net += s.w_cur; Object.entries(s.style_cur || {}).forEach(([k, v]) => g.st[k] = (g.st[k] || 0) + v); });
+  const secs = Object.entries(secMap).sort((a, b) => a[1].net - b[1].net);
+  const stackTraces = (items, key) => D.styles.map(sn => ({ type: 'bar', orientation: 'h', name: sn, x: items.map(([, g]) => (g.st[sn] || 0) * 100), y: items.map(([k]) => key ? key(k) : k), marker: { color: sc(sn) }, hovertemplate: `%{y} · ${sn} %{x:+.2f}%<extra></extra>` }))
+    .concat([{ type: 'scatter', mode: 'markers', name: '순노출', x: items.map(([, g]) => g.net * 100), y: items.map(([k]) => key ? key(k) : k), marker: { symbol: 'diamond', size: 8, color: css('--ink') }, hovertemplate: '%{y} 순 %{x:+.2f}%<extra></extra>' }]);
+  const relLayout = (h, extra) => ({ ...t, barmode: 'relative', margin: { l: 150, r: 16, t: 4, b: 60 }, xaxis: { ...t.xaxis, ticksuffix: '%', tickformat: '.1f', zeroline: true }, legend: { orientation: 'h', y: -0.08 - 30 / h, font: { size: 11 } }, bargap: .3, ...extra });
+  Plotly.react('chart-sector', stackTraces(secs), relLayout(340), cfg);
+  const st = D.stocks.filter(s => s.w_cur).sort((a, b) => b.w_cur - a.w_cur);
+  const pick = [...st.slice(0, 20), ...st.slice(-20)].filter((s, i, a) => a.indexOf(s) === i).sort((a, b) => a.w_cur - b.w_cur);
+  Plotly.react('chart-stocks', stackTraces(pick.map(s => [s, { net: s.w_cur, st: s.style_cur || {} }]), (s) => `${s.ticker || s.isin}  ${(s.name || '').slice(0, 22)}`), relLayout(920, { margin: { l: 250, r: 16, t: 4, b: 60 }, yaxis: { automargin: true, tickfont: { size: 11 } } }), cfg);
+  // 팩터 배포 gross (롱+|숏|, 캡 후) — 당월/전월 북
+  const gc = D.factors.map(() => ({ long: 0, short: 0 })), gp = D.factors.map(() => 0);
+  D.stocks.forEach(s => { (s.f_cur || []).forEach(([fi, w]) => { if (w > 0) gc[fi].long += w; else gc[fi].short += w; }); (s.f_prev || []).forEach(([fi, w]) => { gp[fi] += Math.abs(w); }); });
+  const allF = D.factors.map((f, i) => ({ f, s: D.factor_style[f] || '', long: gc[i].long, short: gc[i].short, cur: gc[i].long - gc[i].short, prev: gp[i] })).filter(r => r.cur || r.prev);
+  const deltas = allF.map(r => ({ ...r, d: r.cur - r.prev })).filter(r => Math.abs(r.d) > 1e-9).sort((a, b) => a.d - b.d);
+  const dsel = deltas.length > 30 ? [...deltas.slice(0, 15), ...deltas.slice(-15)] : deltas;
+  $('p-delta-sub').textContent = D.prev_book_date ? `전월(${D.prev_book_date}) 대비 배포 gross(롱+|숏|) 변화 · 편입 +/편출 −` : '전월 북 없음';
+  Plotly.react('chart-delta', [{ type: 'bar', orientation: 'h', x: dsel.map(r => r.d * 100), y: dsel.map(r => r.f), marker: { color: dsel.map(r => sc(r.s)) }, customdata: dsel.map(r => [r.s, r.prev * 100, r.cur * 100]), hovertemplate: '%{y} (%{customdata[0]})<br>%{customdata[1]:.2f}% → %{customdata[2]:.2f}% (%{x:+.2f}%p)<extra></extra>' }],
+    { ...t, margin: { l: 150, r: 16, t: 4, b: 34 }, xaxis: { ...t.xaxis, ticksuffix: '%p', tickformat: '.1f', zeroline: true }, yaxis: { tickfont: { size: 11 } }, bargap: .3 }, cfg);
+  const rank = allF.filter(r => r.cur > 0).sort((a, b) => b.cur - a.cur);
+  $('t-rank').innerHTML = rank.map((r, i) => row([{ v: i + 1, l: 1 }, { v: `<span class="font-medium">${r.f}</span><br><span class="text-muted text-xs">${D.factor_name[r.f] || ''}</span>`, l: 1 }, { v: stTag(r.s), l: 1 }, { v: pct(r.long) }, { v: pct(r.short) }, { v: r.prev ? pu(r.prev) : '신규' }, { v: pct(r.cur - r.prev, 2) + 'p', c: cls(r.cur - r.prev) }])).join('');
+}
+
+function drawAll() { if (tab === 'dash') { drawCum(); render(); } else if (tab === 'port') { drawPort(); } else if (tab === 'stocks') { renderStocks(false); } else if (tab === 'stocksbm') { renderStocks(true); } else { render(); drawCum(); } }
+applyTheme(getLS() === 'dark');
+</script>
+</body>
+</html>
