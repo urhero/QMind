@@ -35,7 +35,9 @@ if GROSS:
     for a in (D["bm_adj"].get("cur") or {}, D["bm_adj"].get("prev") or {}):
         for key in ("removed_long", "removed_short", "long_before", "short_before", "target"):
             if key in a: a[key] *= K
-dates = D["dates"]; k = dates.index(D["rebalance"]["actual_date"]); idx = len(dates) - 1
+dates = D["dates"]; idx = len(dates) - 1
+k = sum(d <= D["rebalance"]["actual_date"] for d in dates) - 1   # 교대일이 기준일(월말) 이하이면 -1 = 당월 북이 월초부터 (g[0]=1 이라 stitch 식 그대로 성립)
+RB_TXT = (f"{dates[0]} 시가(월초 당월 북 적용)" if k < 0 else f"{D['rebalance']['actual_date']} 종가 교대{' 가정' if RB else ''}")
 styles = D["styles"]; factors = D["factors"]; fstyle = D["factor_style"]; fname = D["factor_name"]
 
 st = {s: dict(long=0.0, short=0.0, c=0.0) for s in styles}
@@ -75,7 +77,7 @@ pct = lambda x, d=2: f"{x*100:+.{d}f}%"; pu = lambda x, d=2: f"{x*100:.{d}f}%"; 
 
 TITLE_NAME = {"MXWO": "QMIND KIC", "MXCN1A": "QMind BOK"}  # PDF 제목 표기 (사용자 지정 2026-09-21); 파일명·폴더는 유니버스 코드 유지
 fig.text(0.07, 0.955, f"{TITLE_NAME.get(BM, f'QMind {BM}')} MP 성과 분석", fontsize=14, weight="bold", color=INK)
-fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {D['rebalance']['actual_date']} 종가 교대{' 가정' if RB else ''}) · 배포 비중(gross {D['gross_cur']*100:.0f}%)", fontsize=8.5, color=MUTED)
+fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {RB_TXT}) · 배포 비중(gross {D['gross_cur']*100:.0f}%)", fontsize=8.5, color=MUTED)
 fig.text(0.07, 0.905, f"MTD 기여  {bp(tot)}", fontsize=20, weight="bold", color=UP if tot > 0 else DOWN)
 
 def table(ax, title, header, rows, colw, colors=None, total_rows=0):

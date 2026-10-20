@@ -144,6 +144,10 @@ tailwind.config = { theme: { extend: {
       <table class="mt-3"><thead><tr><th>종목</th><th>비중</th><th>기여</th></tr></thead><tbody id="t-stocks"></tbody></table>
     </div>
   </section>
+  <section>
+    <h2 class="sec">산업 그룹 (GICS)<small>테마 노출 · 롱/숏/순노출은 배포 비중, 기여 = 기준일까지 누적 · 기여순</small></h2>
+    <table class="mt-3"><thead><tr><th>산업 그룹</th><th>롱</th><th>숏</th><th>순노출</th><th>기여</th></tr></thead><tbody id="t-industry"></tbody></table>
+  </section>
   <details class="no-print"><summary>국가별 · 롱/숏 요약</summary>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-6 mt-3">
       <table><thead><tr><th>국가</th><th>롱</th><th>숏</th><th>기여</th></tr></thead><tbody id="t-country"></tbody></table>
@@ -350,6 +354,10 @@ function render() {
   const sorted = (m) => Object.entries(m).sort((a, b) => b[1].c - a[1].c);
   const secs = sorted(group('sector')), secMax = Math.max(...secs.map(([, g]) => Math.abs(g.c)), 1e-9);
   $('t-sector').innerHTML = secs.map(([kk, g]) => row([{ v: kk, l: 1 }, { v: pct(g.long) }, { v: pct(g.short) }, { v: `<span class="barcell">${bar(g.c, secMax, g.c >= 0 ? css('--up') : css('--down'))}<span class="${cls(g.c)}">${pc(g.c)}</span></span>` }])).join('');
+  // 산업 그룹: 같은 섹터 안의 테마(반도체·하드웨어 롱 vs 소비·필수소비 숏 등) 쏠림을 보기 위한 표
+  const inds = sorted(group('industry')), indMax = Math.max(...inds.map(([, g]) => Math.abs(g.c)), 1e-9);
+  $('t-industry').innerHTML = inds.map(([kk, g]) => row([{ v: kk, l: 1 }, { v: pct(g.long) }, { v: pct(g.short) }, { v: pct(g.long + g.short), c: cls(g.long + g.short) },
+    { v: `<span class="barcell">${bar(g.c, indMax, g.c >= 0 ? css('--up') : css('--down'))}<span class="${cls(g.c)}">${pc(g.c)}</span></span>` }])).join('');
   $('t-country').innerHTML = sorted(group('country')).filter(([, g]) => g.long - g.short > 0.005).map(([kk, g]) => row([{ v: kk, l: 1 }, { v: pct(g.long) }, { v: pct(g.short) }, { v: pc(g.c), c: cls(g.c) }])).join('');
 
   // 스타일 / 팩터: 부호 있는 비중으로 같은 이어붙임 (기준일 idx 와 1주 전 idx-5)

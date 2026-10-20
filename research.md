@@ -542,6 +542,7 @@ main.py
   스타일과 같은 이어붙임으로 팩터 기여 계산. 팩터->스타일 맵은 `load_book` 이 모듈 전역 `FACTOR_STYLE` 에 누적
   (DataFrame.attrs 는 merge 에서 소실, dict 반환 apply 는 MultiIndex 로 펼쳐지므로 루프로 생성)
 - **종목명/팩터명**: 종목명은 Bloomberg `NAME`(`mtd_pnl.bdp`, ReferenceDataRequest) 을 `data/{BM}/security_names.csv` 에 캐시
+- **산업 그룹 (테마 노출, 2026-10-19)**: DB 에는 GICS 섹터만 있어 Bloomberg `GICS_INDUSTRY_GROUP_NAME`(25개 산업 그룹)을 `data/{BM}/security_industry.csv` 에 캐시(`_ref_cache`, 종목명과 같은 방식). MTD 탭 `산업 그룹 (GICS)` 표 = 롱/숏/순노출(배포 비중) + 기여(실현 이어붙이기, 기준일·모드 연동). 계기: 2026-10 MXWO 손실이 같은 섹터 안의 테마 회전(기술 하드웨어 롱 하락 vs 소비·필수소비 우량주 숏 반등)이라 섹터 표로는 안 보였음. Bloomberg 산업 그룹명은 30자에서 잘려 옴(예: `Health Care Equipment & Servic`)
   (없는 sec 만 조회). 팩터는 `data/factor_info.csv` 의 `factorName`(영문 정식명, 전 팩터) 만 표 두 번째 줄에 표시 —
   `factor_desc_kr.csv` 한글 설명은 40개만 있어 일관성 때문에 쓰지 않는다 (사용자 결정 2026-09-18)
 - **리포트 탭 레이아웃**: 화면과 인쇄가 같아야 하므로 반응형 클래스 대신 고정 열 (KPI `1fr 1fr 1fr 1.6fr 1fr`, 표는 한 열로 쌓기).

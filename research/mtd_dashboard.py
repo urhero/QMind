@@ -49,19 +49,30 @@ BM = PARAM["benchmark"]
 FACTOR_STYLE: dict[str, str] = {}  # load_book 이 채움 (팩터 -> 스타일)
 FACTOR_WEIGHT: dict[str, dict[str, float]] = {}  # load_book 이 채움 (북 날짜 -> {팩터: factor_weight, 캡 후 배분 합~1})
 NAMES_PATH = UNIVERSE_DATA_DIR / "security_names.csv"
+INDUSTRY_PATH = UNIVERSE_DATA_DIR / "security_industry.csv"   # GICS 산업 그룹 (DB 에는 섹터만 있음)
+
+
+def _ref_cache(secs: list[str], field: str, path: Path, col: str) -> dict[str, str]:
+    """sec -> Bloomberg 참조값. 캐시(path)에 없는 것만 bdp 조회해 추가 저장."""
+    cache = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["sec", col])
+    have = dict(zip(cache["sec"], cache[col]))
+    missing = [x for x in secs if x not in have]
+    if missing:
+        print(f"[{col}] Bloomberg {field} for {len(missing)} securities")
+        got = bdp(missing, [field])[field].dropna()
+        have.update(got.to_dict())
+        pd.DataFrame({"sec": list(have), col: list(have.values())}).to_csv(path, index=False)
+    return have
 
 
 def security_names(secs: list[str]) -> dict[str, str]:
-    """sec -> 종목명. 캐시(security_names.csv)에 없는 것만 Bloomberg NAME 조회."""
-    cache = pd.read_csv(NAMES_PATH) if NAMES_PATH.exists() else pd.DataFrame(columns=["sec", "name"])
-    have = dict(zip(cache["sec"], cache["name"]))
-    missing = [x for x in secs if x not in have]
-    if missing:
-        print(f"[names] Bloomberg NAME for {len(missing)} securities")
-        got = bdp(missing, ["NAME"])["NAME"].dropna()
-        have.update(got.to_dict())
-        pd.DataFrame({"sec": list(have), "name": list(have.values())}).to_csv(NAMES_PATH, index=False)
-    return have
+    """sec -> 종목명 (security_names.csv 캐시)."""
+    return _ref_cache(secs, "NAME", NAMES_PATH, "name")
+
+
+def security_industry(secs: list[str]) -> dict[str, str]:
+    """sec -> GICS 산업 그룹 (테마 노출용: 반도체·하드웨어 vs 소비·필수소비 등 섹터보다 한 단계 세분)."""
+    return _ref_cache(secs, "GICS_INDUSTRY_GROUP_NAME", INDUSTRY_PATH, "industry")
 
 
 def factor_meta() -> dict[str, str]:
@@ -70,13 +81,19 @@ def factor_meta() -> dict[str, str]:
     return info["factorName"].astype(str).to_dict()
 
 
+def mtd_gross_path() -> Path:
+    """MTD 분석용 목표 gross 이력. mtd_target_gross.csv 가 있으면 우선(MP 추출용과 분리), 없으면 mp_target_gross.csv."""
+    p = UNIVERSE_DATA_DIR / "mtd_target_gross.csv"
+    return p if p.exists() else UNIVERSE_DATA_DIR / "mp_target_gross.csv"
+
+
 def deploy_multiplier_series(months: pd.DatetimeIndex) -> pd.Series:
     """월별 배포 배수 = 목표 gross(mp_target_gross.csv 이력) / 북 gross(deploy_multiplier_*.csv 스냅샷).
 
     사용자 규칙 (2026-09-21): 두 이력 모두 계단식 — 변경 전까지 직전 값을 계속 쓰고(ffill), 최초 기록 이전 달은
     최초 값을 소급(bfill). 결과는 MXWO 의 기록된 multiplier 와 일치하고 MXCN1A 는 전 기간 14% 소급과 일치한다.
     """
-    tg = pd.read_csv(UNIVERSE_DATA_DIR / "mp_target_gross.csv", parse_dates=["effective_date"]).sort_values("effective_date")
+    tg = pd.read_csv(mtd_gross_path(), parse_dates=["effective_date"]).sort_values("effective_date")
     target = tg.set_index("effective_date")["target_gross"].astype(float)
     snaps = sorted((OUTPUT_DIR / "mp_weight_history").glob("deploy_multiplier_*.csv"))
     bg = pd.concat([pd.read_csv(f, parse_dates=["as_of"]) for f in snaps]).set_index("as_of")["book_gross_before"].astype(float).sort_index()
@@ -151,11 +168,11 @@ def load_book(d: Path) -> pd.DataFrame | None:
     book = raw[raw["style"] == "MP"] if "style" in raw and (raw["style"] == "MP").any() else raw
     book = book[["isin", "ticker", "gvkeyiid", "ls_weight"]].dropna(subset=["isin"]).copy()
     # 배포 규모의 정본은 mp_target_gross.csv 이력. 파일 gross 가 다르면(구 스냅샷, 소급 변경) 그 값으로 재스케일
-    target = resolve_target_gross(d.name, UNIVERSE_DATA_DIR / "mp_target_gross.csv", PIPELINE_PARAMS.get("mp_target_gross"))
+    target = resolve_target_gross(d.name, mtd_gross_path(), PIPELINE_PARAMS.get("mp_target_gross"))
     gross = float(book["ls_weight"].abs().sum())
     scale = 1.0
     if target and gross > 0 and abs(gross - target) > 1e-6:
-        print(f"[book] {d.name}: file gross {gross:.2%} -> target {target:.2%} (mp_target_gross.csv)")
+        print(f"[book] {d.name}: file gross {gross:.2%} -> target {target:.2%} (mtd_target_gross.csv 우선)")
         scale = target / gross
         book["ls_weight"] = book["ls_weight"] * scale
     sec_map = fac.drop_duplicates("isin").set_index("isin")["sec"]
@@ -342,6 +359,7 @@ def build(asof: pd.Timestamp) -> dict:
         d = tbl.get(isin) if isin in tbl.index else None
         return [[fidx[k], round(v, 8)] for k, v in d.items()] if isinstance(d, dict) else []
     names = security_names(sorted(set(m1["sec"])))
+    industry = security_industry(sorted(set(m1["sec"])))
     # BM 유니버스 제한본 (임시 탭): 비중·스타일 열에 종목별 배율 적용
     wb_cur, fb_cur, adj_cur = bm_restrict(cur)
     wb_cur.index = fb_cur.index = cur["isin"].values
@@ -360,6 +378,7 @@ def build(asof: pd.Timestamp) -> dict:
         sp_, sc_ = style_w(s_prev, isin), style_w(s_cur, isin)
         stocks.append({"isin": isin, "ticker": str(row["ticker"]) if pd.notna(row["ticker"]) else "", "name": names.get(row["sec"], ""),
                        "sector": row["sector"] if pd.notna(row["sector"]) else "n/a",
+                       "industry": industry.get(row["sec"], "n/a"),
                        "country": row["country"] if pd.notna(row["country"]) else "n/a",
                        "w_prev": float(w_prev.get(isin, 0.0)), "w_cur": float(w_cur.get(isin, 0.0)),
                        "style_prev": sp_, "style_cur": sc_,

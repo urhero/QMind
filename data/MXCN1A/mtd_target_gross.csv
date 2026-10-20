@@ -1,0 +1,2 @@
+effective_date,target_gross,note
+2009-01-01,0.19,"MTD 분석 전용: 숏 제한 + MSCI China A(718708, 소형주 일부 제외)를 BM 으로 한 Gross Active Weight 19% (2026-10-02 사용자 지정). MP 추출용 mp_target_gross.csv 와 별개"
