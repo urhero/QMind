@@ -152,7 +152,9 @@ ERC 수축은 6개월 기준(0 방향 단조)과 **반대 방향**으로 단조 
       (meta_data·gross34 불변). MXWO mp test 는 변화 없음 — test 모드는 캡 재분배·히스테리시스를 건너뛰고 테스트 데이터 유효 팩터가 4개라
       세 설정이 모두 작동하지 않는다 (test 모드로는 이 변경을 검증할 수 없음, 실데이터 비교가 유효). 검증 후 배포 북·이력은 백업본으로 복구
 - [x] **pytest**: 338 passed (`test_config_universe` 3축 기대값 + `style_cap_used` 테스트 3개 추가)
-- [ ] **독립 재실행 재현**: 채택 config 로 `main.py backtest --factor-rebal-months 1` 및 기본(규칙 6개월) 재실행 -> 러너 수치와 일치 확인
+- [x] **독립 재실행 재현** (2026-10-21): 채택 config 로 엔진 `main.py backtest --factor-rebal-months 1` 재실행 -> 러너 B안
+      시계열과 100개월 전 열 max|diff| 0 (Sharpe 0.687). 기본(규칙 6개월) 재실행도 러너 위상 0 결과와 diff 0 (Sharpe 0.637 = 공식 절차 기준
+      B안 수치). 엔진 산출물은 `output/MXWO/experiments/b_plan_20261021/engine_rebal{1,6}/`, 표준 위치 9/30 백테스트 산출물은 HEAD 와 동일하게 복구
 
 ## 채택 시 후속
 
