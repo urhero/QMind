@@ -40,6 +40,7 @@ from mtd_pnl import BM_SECURITY, attach_securities, bdh, bdp  # noqa: E402
 from config import PARAM, PIPELINE_PARAMS  # noqa: E402
 from service.paths import DATA_DIR, DATE_GLOB, OUTPUT_DIR, UNIVERSE_DATA_DIR  # noqa: E402
 from service.pipeline.weight_construction import resolve_target_gross  # noqa: E402
+from service.pipeline.weight_history import style_cap_used  # noqa: E402
 
 RET_FIELD = "DAY_TO_DAY_TOT_RETURN_GROSS_DVDS"
 CACHE_DIR = UNIVERSE_DATA_DIR / "daily_ret"
@@ -392,7 +393,9 @@ def build(asof: pd.Timestamp) -> dict:
     out["factor_name"] = {f: fm.get(f, "") for f in factors}
     out["factor_weight"] = FACTOR_WEIGHT.get(cur_dir.name, {})
     out["factor_weight_prev"] = FACTOR_WEIGHT.get(prev_dir[-1].name, {}) if prev_dir else {}
-    out["style_cap"] = float(PIPELINE_PARAMS.get("style_cap", 0.25))
+    # 그 북에 적용된 캡 (MXWO 는 2026-10-21 25% -> 20%; 10월 북은 25% 로 만든 북)
+    out["style_cap"] = style_cap_used(OUTPUT_DIR / "mp_weight_history", cur_dir.name,
+                                      float(PIPELINE_PARAMS.get("style_cap", 0.25)))
     out["factor_horizon"], out["horizon_asof"] = factor_horizons(cur_dir, factors)
     # 종목 x 날짜 일수익률(USD, 결측 0) -> 브라우저가 임의 리밸런싱일로 이어붙임을 다시 계산
     isin2sec = m1["sec"]

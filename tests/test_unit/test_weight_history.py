@@ -384,3 +384,40 @@ def test_save_factor_clusters_single_factor_returns_none():
                        index=pd.date_range("2026-01-31", periods=3, freq="ME"))
     with tempfile.TemporaryDirectory() as tmp:
         assert save_factor_clusters(Path(tmp), "2026-06-30", ret, {"A": 1.0}, {}) is None
+
+# ── style_cap_used (2026-10-21) ──────────────────────────────────────────
+
+def _cap_effect(tmp: Path, snap: str, rows: list[tuple[str, str, float, float]]) -> None:
+    pd.DataFrame(rows, columns=["factor", "styleName", "raw_weight", "fitted_weight"]).to_csv(
+        tmp / f"style_cap_effect_{snap}.csv", index=False)
+
+
+def test_style_cap_used_recovers_cap_of_that_book():
+    """설정이 0.20 으로 바뀐 뒤에도 25% 캡으로 만든 북은 0.25 로 읽는다."""
+    from service.pipeline.weight_history import style_cap_used
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        # Valuation 30% -> 캡 25% 로 눌림, 나머지는 재정규화로 증가
+        _cap_effect(t, "2026-09-30", [("V1", "Valuation", 0.30, 0.25), ("Q1", "Quality", 0.40, 0.4286),
+                                       ("G1", "Growth", 0.30, 0.3214)])
+        assert style_cap_used(t, "2026-09-30", 0.20) == 0.25
+
+
+def test_style_cap_used_rounds_unconverged_overshoot():
+    """10회 반복 미수렴으로 20.5% 가 남아도 캡은 0.20 으로 본다."""
+    from service.pipeline.weight_history import style_cap_used
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        _cap_effect(t, "2026-10-31", [("V1", "Valuation", 0.26, 0.205), ("H1", "Growth", 0.24, 0.205),
+                                       ("A1", "Analyst", 0.50, 0.59)])
+        assert style_cap_used(t, "2026-10-31", 0.25) == 0.20
+
+
+def test_style_cap_used_falls_back_to_default():
+    """이력이 없거나 캡이 발동하지 않았으면 기본값."""
+    from service.pipeline.weight_history import style_cap_used
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        assert style_cap_used(t, "2026-09-30", 0.20) == 0.20                       # 파일 없음
+        _cap_effect(t, "2026-08-31", [("V1", "Valuation", 0.5, 0.5), ("Q1", "Quality", 0.5, 0.5)])
+        assert style_cap_used(t, "2026-08-31", 0.25) == 0.25                       # 캡 미발동

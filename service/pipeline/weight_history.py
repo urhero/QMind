@@ -102,6 +102,23 @@ def load_prev_selection(
     return selected, ddt_str
 
 
+def style_cap_used(history_dir: Path, snap: str, default: float) -> float:
+    """그 회차 MP 에 실제로 적용된 스타일 캡을 style_cap_effect_{snap}.csv 에서 역산한다.
+
+    config 의 style_cap 은 나중에 바뀔 수 있어(2026-10-21 MXWO 0.25 -> 0.20) 과거 북을 그릴 때
+    현재 설정값을 쓰면 캡 선이 틀린다. 캡에 눌린(캡 후 < 캡 전) 스타일의 캡 후 합 최대값을 쓴다.
+    캡 보정은 최대 10회 반복이라 미수렴 시 캡을 0.x%p 넘기므로 5%p 격자로 반올림한다.
+    이력이 없거나 눌린 스타일이 없으면 default.
+    """
+    path = history_dir / f"style_cap_effect_{snap}.csv"
+    if not path.exists():
+        return default
+    g = pd.read_csv(path).groupby("styleName")[["raw_weight", "fitted_weight"]].sum()
+    capped = g.loc[g["fitted_weight"] < g["raw_weight"] - 1e-6, "fitted_weight"]
+    # ponytail: 5%p 격자 반올림 — 캡이 5%p 배수가 아니면(예: 22%) 틀린다. 그런 캡을 쓰게 되면 캡 값을 이력에 저장할 것
+    return round(float(capped.max()) * 20) / 20 if len(capped) else default
+
+
 def save_factor_weights(
     history_dir: Path, end_date: str | pd.Timestamp,
     weights: dict[str, float],

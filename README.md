@@ -8,7 +8,7 @@
 > 2026-09-09 QMind 로 개명하면서 기본 유니버스를 MXWO 로 바꿨다. 선정·가중 방법론은 유니버스별로 따로 튜닝돼 있고,
 > `BENCHMARK` 값 하나로 파라미터·DB·출력 폴더·데이터 파일이 전부 결정됩니다 —
 > [유니버스 전환](#유니버스-전환) 및 문서 끝의 [유니버스별 파라미터](#유니버스별-파라미터-mxcn1a-vs-mxwo) 참조.
-> 본문 각 단계의 수치 예시(롤링 IS 48개월, 순수 Top-50, 섹터 숏캡 등)는 **MXWO 기준**이며,
+> 본문 각 단계의 수치 예시(롤링 IS 48개월, 순수 Top-60, 섹터 숏캡 등)는 **MXWO 기준**이며,
 > MXCN1A 는 표의 값(expanding IS, winner_median 클러스터, 숏캡 없음)으로 읽으면 됩니다.
 >
 > 각 섹션의 `[N]` 번호는 `model_portfolio.py:run()` 코드의 단계 주석과 동일합니다
@@ -51,7 +51,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 200+ 유효 팩터                      [1]~[3] 데이터 로딩 + 5분위 + 섹터 필터
        │                                 (min_coverage 10%, 롤링 IS 48개월 기준 학습)
        ▼
-   선정 팩터 (고정 Top 50)           [4] t-stat 랭킹 → 순수 Top-50 절단 (클러스터 dedup off)
+   선정 팩터 (고정 Top 60)           [4] t-stat 랭킹 → 순수 Top-60 절단 (클러스터 dedup off)
        │
        ▼
    weight>0 팩터                     [6] ERC 가중 + TS모멘텀 틸트 + 스타일 캡
@@ -128,11 +128,11 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 - 각 팩터별 롱/숏 포트폴리오 구성 → 거래비용(10bp) 차감 → 월간 L-S 수익률 행렬 생성
 - 핵심 함수: `factor_returns.aggregate_factor_returns()`
 
-### (b) 팩터 유니버스 최종 선정 (200+ -> 순수 Top-50)
+### (b) 팩터 유니버스 최종 선정 (200+ -> 순수 Top-60)
 - 랭킹 방식: **t-stat 기반** (기본), `shrunk_tstat` / `cagr` 선택 가능 (`factor_ranking_method`). 랭킹의 입력은 롤링 IS 48개월 수익률
 - production `mp`와 walk-forward 백테스트가 `factor.selection.compute_rank_score()`를 공유 — 검증된 config과 배포 전략이 항상 일치
-- **클러스터 dedup 없음** (`use_cluster_dedup=False`, MXWO 채택): rank_score **순수 Top-50 절단** (`top_factor_count=50`, 개수 고정). MXCN1A와 정반대 결정 — 롤링 48개월의 짧은 창에서는 클러스터 구성이 불안정해 dedup이 좋은 팩터를 날림 (2026-07-28 A/B: dedup on -0.12 / off +0.41 Sharpe). **유사 팩터 간 중복 관리는 선정이 아니라 [6]의 ERC 가중이 담당** (겹치는 무리의 비중을 낮추는 방식)
-- **선정 히스테리시스** (`selection_hysteresis=0.25`): 직전 회차 보유 팩터는 챌린저가 rank_score 격차 0.25 이상 이길 때만 교체 — 월간 리밸의 노이즈성 교체 차단 (MXWO 스윕 채택, 2026-07-29; MXCN1A는 0.5)
+- **클러스터 dedup 없음** (`use_cluster_dedup=False`, MXWO 채택): rank_score **순수 Top-60 절단** (`top_factor_count=60`, 개수 고정 — 2026-10-21 50에서 상향, 60~70 고원). MXCN1A와 정반대 결정 — 롤링 48개월의 짧은 창에서는 클러스터 구성이 불안정해 dedup이 좋은 팩터를 날림 (2026-07-28 A/B: dedup on -0.12 / off +0.41 Sharpe). **유사 팩터 간 중복 관리는 선정이 아니라 [6]의 ERC 가중이 담당** (겹치는 무리의 비중을 낮추는 방식)
+- **선정 히스테리시스 off** (`selection_hysteresis=0`, 2026-10-21; 구 0.25): 매달 rank_score 순서대로 다시 고른다. 운용 mp 는 규칙(섹터 제거·L/S 라벨)을 매달 다시 학습하므로, 직전 보유 팩터를 우대하면 순위가 내려간 낡은 팩터를 붙잡게 된다 — 운용 동등(규칙 매달 학습) 재검증에서 0 이 앞·뒤 구간 모두 우위 ([rebal1_param_recheck_20261021.md](docs/experiments/rebal1_param_recheck_20261021.md)). MXCN1A는 0.5
 - 최종 비중 할당은 [6]에서 결정
 
 ---
@@ -151,9 +151,9 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 > 백테스트(`python main.py backtest`)는 config의 `optimization_mode`를 그대로 사용한다 (`hardcoded`만 `equal_weight`로 자동 변환).
 
 ### 절차 (erc 모드, MXWO 채택 스택)
-1. **ERC base 가중**: 선정 Top-50의 롤링 48개월 수익률 cov(대각 수축 `erc_shrinkage=0.2`)에서 팩터별 리스크 기여 w×(Σw)를 균등화하는 비중 산출 (Spinu CCD — 음상관 팩터도 양수 비중 보장). 선정에서 dedup을 안 하는 대신, 상관 높은 팩터 무리의 비중을 여기서 낮춘다
+1. **ERC base 가중**: 선정 Top-60의 롤링 48개월 수익률 cov(대각 수축 `erc_shrinkage=0.2`)에서 팩터별 리스크 기여 w×(Σw)를 균등화하는 비중 산출 (Spinu CCD — 음상관 팩터도 양수 비중 보장). 선정에서 dedup을 안 하는 대신, 상관 높은 팩터 무리의 비중을 여기서 낮춘다
 2. **TS 모멘텀 틸트** (`ts_mom_window=3`, base 단계): trailing 3개월 자기 누적수익이 음수인 팩터의 비중을 `ts_mom_scale=0.2`배 감쇠 (창 4→3 재채택 2026-08-07, 감쇠 0.5→0.2 채택 2026-08-10 — 전구간 0~1 스윕 + 실측 게이트). 캡 재분배 **이전** 적용 — 2026-08-06 순서 교정 (구 캡-후-틸트는 스타일 합이 캡 초과, 2026-06-30 EQ 26.1%)
-3. 스타일별 명목비중 합계가 **스타일 캡(25%)**을 넘지 않도록 비례 재분배 — 교정 후 캡 25% 준수
+3. 스타일별 명목비중 합계가 **스타일 캡(MXWO 20%, 2026-10-21; 규제 상한 25% 이내)**을 넘지 않도록 비례 재분배 — 축소·재정규화를 최대 10회 반복하므로, 캡에 닿는 스타일이 4개 이상인 달은 미수렴으로 캡을 최대 ~0.8%p 넘길 수 있다 (2018~2026 백테스트 100개월 중 21개월, 25% 이내)
 4. `deploy_step=1.0`: 전량 조정 배포 (10bp 비용에선 부분 조정(0.5)이 열위로 역전, 2026-07-30 실측)
 5. **MP 배포 배수** (`mp_target_gross=0.40`, 2026-08-19 채택): 최종 MP 북을 실제 포트폴리오 규모로 스케일해 산출물에 미리 반영한다. 팩터 50개를 종목 단위로 netting 하면 gross 가 매 시점 달라지므로(2025-06 89.8% / 2026-06 85.6%), 고정 배수 대신 **목표 총 gross 에 맞추는 배수를 자동 산출** — 결과는 항상 롱 +20% / 숏 -20%. ex-ante TE 의 주 동인인 노출을 고정해 netting 변동이 포트 크기를 좌우하지 않게 한다. 적용 배수는 `mp_weight_history/deploy_multiplier_{기준일}.csv` 에 기록. `mp_target_gross=None` 이면 `data/{BENCHMARK}/mp_multiplier.csv` 의 시점별 수동 배수(계단식) 사용. **성과 백테스트·실측은 팩터 비중에서 재구성하므로 이 배수의 영향을 받지 않는다**
 
@@ -203,7 +203,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 
 ### 용어: MP vs Constrained EW
 - **MP (Model Portfolio)** — 프로덕션 산출물 (Bloomberg Optimizer 입력 CSV). 역할 이름.
-- **Constrained EW** — MP를 만드는 **구성 방식**의 관례적 라벨 (선정 팩터 가중 + `style_cap=25%` 재분배). MXWO에선 Top-50 고정 + **ERC(수축 0.2) + TS모멘텀 틸트** 가중 (EW 1/N → ERW 1/σ → ERC로 진화)이나, 백테스트 리포트/CSV 컬럼의 "CEW" 라벨은 호환을 위해 유지.
+- **Constrained EW** — MP를 만드는 **구성 방식**의 관례적 라벨 (선정 팩터 가중 + `style_cap` 재분배 — MXWO 20% / MXCN1A 25%). MXWO에선 Top-60 고정 + **ERC(수축 0.2) + TS모멘텀 틸트** 가중 (EW 1/N → ERW 1/σ → ERC로 진화)이나, 백테스트 리포트/CSV 컬럼의 "CEW" 라벨은 호환을 위해 유지.
 - 백테스트 진단 리포트는 구성 방식을 명시하기 위해 "Constrained EW" 라벨을 사용. 프로덕션 CLI/파일명/CSV 컬럼은 "MP" 유지.
 - 과거 MP는 Monte Carlo 최적화로 구성됐으나 커밋 `8dfb64e`에서 제거됨.
 
@@ -373,7 +373,7 @@ python main.py viz --open
   누적수익 4선 비교, **월별 수익률 히트맵(연×월)**, 낙폭, 월별수익 분포, **롤링 12개월 Sharpe**, **스타일 비중 추이(스택 영역)**, **팩터 회전율**,
   **과적합 진단 상세 표**(Funnel 패턴 + **OOS 성과**(CAGR/MDD/Sharpe/Calmar)를 **EW/Top50/CEW 3열**로 비교 + Jaccard/Deflation/Rank Corr 등),
   **낙폭 구간 분석 표**(곡선별 DD episode: 깊이 + peak/trough/recovery + 하락·회복 기간(개월), 1% 이상)
-- (현재 포트) 스타일 배분(25% cap 라인), **섹터별 순비중(롱-숏 순노출)**, 종목별 순비중 상위 롱/숏,
+- (현재 포트) 스타일 배분(그 북에 적용된 캡 라인 — `style_cap_effect` 이력에서 역산해 설정 변경 전 북도 당시 캡으로 표시), **섹터별 순비중(롱-숏 순노출)**, 종목별 순비중 상위 롱/숏,
   팩터 틸트, 팩터 리더보드(tstat vs CAGR), 전월 대비 스타일 변화(운영모드만)
 
 HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
@@ -391,7 +391,7 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 
 | 파라미터 | 값 | 설명 | 사용 모듈 |
 |---------|-----|------|-----------|
-| `style_cap` | 0.25 | 스타일 캡 (프로덕션 규제 요건) | `optimization.py` |
+| `style_cap` | 0.25 (MXWO 0.20) | 스타일 캡 (프로덕션 규제 요건 = 상한 25%. MXWO 는 2026-10-21 20% 로 강화) | `optimization.py` |
 | `optimization_mode` "erc" | - | 상관 인지 Equal Risk Contribution 가중 (2026-07-29 채택, **07-30 Spinu CCD 솔버로 정정** — RC 균등·음의 상관 헤지 팩터 우대 보장; cov 48M) | `optimization.py` |
 | `erc_shrinkage` | 0.2 | ERC cov 대각 수축 비율 (0~1 전구간 스윕 단조 하강, 0.2 채택 2026-08-07 — 0은 특이 cov 회피) | `optimization.py` |
 | `deploy_step` | 1.0 | 부분 조정 배포 (1.0=전량). 20bp 시절 0.5, 10bp 전환 후 역전으로 1.0 (실측 0.672 vs 0.604) | `optimization.py`, `model_portfolio.py`, `walk_forward_engine.py` |
@@ -400,7 +400,7 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 | `weight_rebal_months` | 1 | Tier 2 가중 리밸 주기 (월간 채택) | `walk_forward_engine.py` |
 | `transaction_cost_bps` | 10.0 | 거래비용 (bp). MXWO 선진국 대형주 실집행 기준 (2026-07-30 사용자 지정; MXCN1A는 20) | `weight_construction.py`, `model_portfolio.py` |
 | `backtest_cost_multiplier` | 0.6 | **선정 입력용** 비용 배수 (비용 인지 선정 최적). factor-level 성과 회계는 고회전 구성에서 과소계상 — **정본 성과 판단은 `research/mp_level_cost_backtest.py` 실측 기준** (정식 ERC 실측 net Sharpe 0.368, 2026-07-30 정정) | `walk_forward_engine.py` |
-| `top_factor_count` | 50 | rank_score 상위 절단 수 (dedup off(MXWO) 또는 `cluster_method=topn` 에서 적용; winner_median 은 미사용). backtest CLI `--top-factors` 미지정 시 이 값 | `universe.py`, `walk_forward_engine.py` (`selection.select_factors` 공유) |
+| `top_factor_count` | 50 (MXWO 60) | rank_score 상위 절단 수 (dedup off(MXWO) 또는 `cluster_method=topn` 에서 적용; winner_median 은 미사용). backtest CLI `--top-factors` 미지정 시 이 값 | `universe.py`, `walk_forward_engine.py` (`selection.select_factors` 공유) |
 | `factor_ranking_method` | "tstat" | 팩터 랭킹 방식 (`shrunk_tstat` / `tstat` / `cagr`) | `universe.py`, `walk_forward_engine.py` (`selection.compute_rank_score` 공유) |
 | `use_cluster_dedup` | False | Hierarchical Clustering 중복 제거. **MXWO: off** — 롤링 IS와 winner_median 궁합 문제 (2026-07-28 절단 실험: on -0.12 / off +0.41 Sharpe). MXCN1A는 True | `model_portfolio.py`, `walk_forward_engine.py` |
 | `is_window_months` | 48 | 롤링 IS 윈도우 (개월, None=expanding). 규칙 학습·선정·가중을 최근 N개월로 제한 — 레짐 적응 (2026-07-28 w36~72 스윕, 내부 고원점 채택) | `model_portfolio.py`, `walk_forward_engine.py` |
@@ -413,7 +413,7 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 | `min_coverage_pct` | 0.10 | 팩터 최소 단면 커버리지 (유니버스 대비 유효 관측 비율, IS 기준). 은행 전용 등 초저커버리지 팩터 제외 (2026-07-27 MXWO A/B 채택) | `factor_analysis.py` |
 | `max_zero_return_months` | 10 | 0 수익률 허용 최대 월 수 | `model_portfolio.py` |
 | `backtest_start` | "2009-12-31" | 팩터 L/S 수익률 계산 하한 (`ddt >=`). CLI 날짜와 무관하게 엔진은 parquet 전 기간을 돎 — MXWO(2015-06~)에선 사실상 no-op | `weight_construction.py`, `universe.py` |
-| `selection_hysteresis` | 0.25 | 선정 히스테리시스 margin (rank_score 단위, 0=off). 직전 선정 팩터는 챌린저가 이 격차 이상 이겨야 교체 | `model_portfolio.py`, `walk_forward_engine.py` (`apply_selection_hysteresis` 공유) |
+| `selection_hysteresis` | MXWO 0 / MXCN1A 0.5 | 선정 히스테리시스 margin (rank_score 단위, 0=off; MXWO 2026-10-21 0.25->0). 직전 선정 팩터는 챌린저가 이 격차 이상 이겨야 교체 | `model_portfolio.py`, `walk_forward_engine.py` (`apply_selection_hysteresis` 공유) |
 
 > **실험 결과:** [docs/experiments/cluster_turnover_20260425.md](docs/experiments/cluster_turnover_20260425.md) 참조 (43 케이스 광역 sweep). 1장 요약은 [executive_summary.md](docs/experiments/executive_summary.md). 핵심 발견: ① `OPTIMIZATION_OVERFIT` 실체 = style_cap 의 OOS 비용, ② n_clusters sweet spot 18~30, ③ Clustering 후 style_cap 효과 거의 없음, ④ smoothing α 0.1 saturation, ⑤ ranking method 는 t-stat 이 베스트, ⑥ min_is_months 는 모델에 영향 없음, ⑦ **baseline 은 2023~ Sharpe 0.27 / 21개월째 -6% 미회복 — 위험**, ⑧ **combo_18_0.1 은 같은 기간 Sharpe 0.99 / 회복 완료** (3.7배 차이). 당시 권장이던 `combo_18_0.1` 중 **clustering(n=18)은 적용 유지**, smoothing α=0.1(EMA)은 이후 절대스텝 -> 무스무딩으로 대체되었고, 2026-06 비용-인지 실험으로 **선정 히스테리시스(0.5)가 최종 적용**됨 — [smoothing_cost_experiment_20260612.md](docs/experiments/smoothing_cost_experiment_20260612.md) 참조. 2026-07-05 선정/필터 개선안 5종(섹터 유의성 게이트, half-life t-stat, IQR margin, 비례 zero-filter, 기하평균 스프레드)은 **A/B 전부 기각**(현행 국소 최적 재확인), EW_Top50 진단 곡선 pre-dedup 복원만 채택 — [proposal_experiments_20260705.md](docs/experiments/proposal_experiments_20260705.md) 참조.
 
@@ -438,8 +438,10 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 | 데이터/서버 | GLOBAL, 2009-12~ | kb_global, 2015-06~ |
 | `transaction_cost_bps` | 20 | 10 (+ `COUNTRY_TAX_BPS` 국가별 거래세) |
 | `is_window_months` | None (expanding) | 48 (롤링) |
-| `use_cluster_dedup` | True (winner_median, ~28 가변) | False (순수 Top-50) |
-| `selection_hysteresis` | 0.5 | 0.25 |
+| `use_cluster_dedup` | True (winner_median, ~28 가변) | False (순수 Top-60) |
+| `selection_hysteresis` | 0.5 | 0 (2026-10-21; 구 0.25) |
+| `top_factor_count` | 50 (winner_median 이라 미사용) | 60 (2026-10-21; 구 50) |
+| `style_cap` | 0.25 | 0.20 (2026-10-21; 구 0.25) |
 | `weight_rebal_months` | 3 | 1 |
 | `erc_shrinkage` / `ts_mom_scale` | 0.5 / 0.5 | 0.2 / 0.2 |
 | `min_coverage_pct` | 0 | 0.10 |
@@ -450,7 +452,7 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 | 유니버스 종속 데이터 | `data/MXCN1A/` (+ `mp_target_gross.csv`) | `data/MXWO/` (+ `mp_target_gross.csv`, `mp_multiplier.csv`, `bm_returns.csv`, `bmwgt.parquet`, `country_map.parquet`) |
 | 정본 실측 (배포 기준, 2026-09-16 look-ahead 제거 후) | Sharpe 0.730 / MDD -0.76% / TE 0.51% (롱숏 ±7%, 거래세 미적용) | Sharpe 0.661 / MDD -1.99% / TE 1.03% (롱숏 ±20%, 거래세 반영) |
 
-공통 항목(style_cap 0.25, spread 0.05, ERC 모드, ts_mom_window 3, deploy_step 1.0 등)은 `config.py`의 `_COMMON_PARAMS`,
+공통 항목(style_cap 0.25·top_factor_count 50 — MXWO 는 0.20·60 으로 덮어씀, spread 0.05, ERC 모드, ts_mom_window 3, deploy_step 1.0 등)은 `config.py`의 `_COMMON_PARAMS`,
 유니버스별 항목은 `_UNIVERSE_PARAMS[BENCHMARK]` — `PIPELINE_PARAMS = {**_COMMON_PARAMS, **_UNIVERSE_PARAMS[BENCHMARK]}`.
 채택 근거(실험 문서·날짜)는 각 값 옆 주석 참조. MXCN1A: [`mxcn1a_component_ablation_20260805.md`](docs/experiments/mxcn1a_component_ablation_20260805.md),
 MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_20260729.md).

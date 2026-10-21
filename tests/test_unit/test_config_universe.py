@@ -23,8 +23,11 @@ def _restore_config():
     importlib.reload(config)
 
 
-@pytest.mark.parametrize("bm,cost,dedup,win", [("MXCN1A", 20.0, True, None), ("MXWO", 10.0, False, 48)])
-def test_universe_params(monkeypatch, bm, cost, dedup, win):
+@pytest.mark.parametrize("bm,cost,dedup,win,cap,top,hyst", [
+    ("MXCN1A", 20.0, True, None, 0.25, 50, 0.5),
+    ("MXWO", 10.0, False, 48, 0.20, 60, 0.0),   # MXWO 3축 덮어쓰기 (2026-10-21 B안)
+])
+def test_universe_params(monkeypatch, bm, cost, dedup, win, cap, top, hyst):
     cfg = _load(monkeypatch, bm)
     assert cfg.PARAM["benchmark"] == bm
     assert cfg.PARAM["universe"] == cfg.UNIVERSES[bm]["universe"]
@@ -33,7 +36,9 @@ def test_universe_params(monkeypatch, bm, cost, dedup, win):
     assert cfg.PIPELINE_PARAMS["use_cluster_dedup"] is dedup
     assert cfg.PIPELINE_PARAMS["is_window_months"] == win
     assert cfg.PIPELINE_PARAMS["apply_country_tax"] is (bm == "MXWO")  # 거래세는 MXWO 전용
-    assert cfg.PIPELINE_PARAMS["style_cap"] == 0.25  # 공통
+    assert cfg.PIPELINE_PARAMS["style_cap"] == cap
+    assert cfg.PIPELINE_PARAMS["top_factor_count"] == top
+    assert cfg.PIPELINE_PARAMS["selection_hysteresis"] == hyst
 
 
 def test_env_overrides_db_identity(monkeypatch):

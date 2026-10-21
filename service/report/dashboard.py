@@ -18,6 +18,7 @@ import pandas as pd
 
 from config import PARAM, PIPELINE_PARAMS
 from service.paths import dated, latest
+from service.pipeline.weight_history import style_cap_used
 from service.report import dashboard_charts as ch
 from service.report import dashboard_data as dd
 from service.report.dashboard_charts import STRAT_LABEL
@@ -722,7 +723,8 @@ def _build_portfolio_section(output_dir: Path, end_date: str | None,
     tilt = dd.factor_tilt(weights)
     selected = dd.active_factors(weights)
 
-    style_cap = float(PIPELINE_PARAMS["style_cap"])
+    # 그 북에 적용된 캡 (설정은 나중에 바뀔 수 있음, 2026-10-21)
+    style_cap = style_cap_used(output_dir / "mp_weight_history", snap, float(PIPELINE_PARAMS["style_cap"]))
 
     cards = [
         f'<div class="card">{_fig_div(ch.style_allocation_fig(style_w, style_cap), include_js=not js_already)}</div>'
@@ -854,7 +856,7 @@ def _correlation_regime_section(output_dir: Path, end_date=None) -> str:
 
 
 def _style_cap_section(output_dir: Path, snap: str) -> str:
-    """스타일 캡 25% 적용 전/후 스타일 배분 비교 (mp 저장 style_cap_effect CSV 기반)."""
+    """스타일 캡 적용 전/후 스타일 배분 비교 (mp 저장 style_cap_effect CSV 기반)."""
     path = output_dir / "mp_weight_history" / f"style_cap_effect_{snap}.csv"
     if not path.exists():
         return ""
@@ -862,7 +864,7 @@ def _style_cap_section(output_dir: Path, snap: str) -> str:
     if df.empty or (df["raw_weight"] - df["fitted_weight"]).abs().max() < 1e-12:
         return ""  # 캡 미발동(전후 동일)이면 생략
 
-    style_cap = float(PIPELINE_PARAMS["style_cap"])
+    style_cap = style_cap_used(output_dir / "mp_weight_history", snap, float(PIPELINE_PARAMS["style_cap"]))
 
     g = df.groupby("styleName")[["raw_weight", "fitted_weight"]].sum()
     g = g.sort_values("raw_weight", ascending=False)

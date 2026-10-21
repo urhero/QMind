@@ -100,7 +100,12 @@ _UNIVERSE_PARAMS = {
         "ts_mom_scale": 0.2,           # 0.2 채택 (2026-08-10 전구간 0~1 스윕: 0 방향 단조 우위, 실측 net 0.782->0.840/MDD -3.50%. 0은 완전 제외 벼랑 규칙+회전 4.4x+최근구간 최약이라 회피, 0.2 = 내부 안전점)
         "use_cluster_dedup": False,    # 롤링 IS와 winner_median 궁합 문제로 off (2026-07-28 A/B: on -0.12 / off +0.41 Sharpe)
         "is_window_months": 48,        # 롤링 IS 윈도우 (개월). w36~72 스윕 중 내부 고원점 w48 채택 (2026-07-28, full Sharpe 0.16->0.41)
-        "selection_hysteresis": 0.25,  # 0.25 채택 (2026-07-29; 구 0.5)
+        # ── 2026-10-21 운용 동등 재검증 B안 (docs/experiments/rebal1_param_recheck_20261021.md) ──
+        # 운용 mp 는 Tier 1 규칙을 매달 학습하므로 --factor-rebal-months 1 조건에서 재검증: 아래 3축이
+        # 앞·뒤 반쪽 모두 개선 (Sharpe 0.42 -> 0.69, MDD -194 -> -149bp, gross 32% 환산 MP-level 순수익).
+        "selection_hysteresis": 0.0,   # 0 = off (구 0.25, 2026-07-29). 규칙을 매달 다시 배우면 직전 보유 팩터 우대가 순위가 내려간 팩터를 붙잡음. 0~0.1 고원
+        "top_factor_count": 60,        # MXWO 60 (공통 50). 60~70 고원, 55 이하 하락
+        "style_cap": 0.20,             # MXWO 20% (공통 25% = 규제 상한). 0.15~0.20 고원. 캡 보정 10회 반복 미수렴으로 최대 ~0.8%p 초과하는 달 있음 (25% 이내)
         "weight_rebal_months": 1,      # 월간 가중 리밸 채택 (2026-07-29)
         "min_coverage_pct": 0.10,      # 팩터 최소 단면 커버리지 (유니버스 대비 유효 관측 비율, IS 기준). 은행 전용 등 초저커버리지 팩터 제외 (2026-07-27 A/B 채택)
         "sector_short_cap": 0.15,      # 섹터별 숏 gross 상한 (전체 숏 gross 대비, 2026-07-30 채택 — 2020-11형 숏 crowding 완화. 실측 스택 net 0.692/MDD -4.95/Calmar 0.352)
