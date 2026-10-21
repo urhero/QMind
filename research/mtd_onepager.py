@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """종목 기여(임시, BM 유니버스 제한) 기준 스타일/팩터 비중·기여 한 장 PDF (내부 보고용).
 
-사용:  BENCHMARK=MXCN1A python research/mtd_onepager.py [YYYY-MM-DD] [--bbg 9.60] [--gross 0.19]   # 기본 어제
+사용:  BENCHMARK=MXCN1A python research/mtd_onepager.py [YYYY-MM-DD] [--bbg 9.60] [--gross 0.19] [--1m | --from YYYY-MM-DD]   # 기본 어제, 날짜는 맨 앞
+--1m 은 기준일 한 달 전 종가부터 (최근 1개월), --from 은 지정일 종가부터. 기간이 전월로 넘어가면 전월 데이터(그 달 북·교대일)를 이어 붙인다.
 --gross 는 배포 gross 를 가정값으로 재스케일 (예: 0.19 = 롱/숏 각 9.5%). 파일명에 _gross19 접미사
-출력:  output/{BM}/<MP 기준일>/mtd_pdf/mtd_style_factor[_bmuniv]_<asof>[_grossNN].pdf (+ .png 미리보기)
+출력:  output/{BM}/<MP 기준일>/mtd_pdf/mtd_performance_analysis_{KIC|BOK}[_bmuniv]_<asof>[_grossNN].pdf (+ .png 미리보기)
 전제:  data/{BM}/bm_universe.csv 가 있으면 BM 유니버스 제한본(_bmuniv), 없으면(MXWO) 원 MP 기준. 일별 캐시는 mtd_dashboard 와 공유.
 --bbg 는 Bloomberg PORT Active CTR(bp) 를 머리글에 병기.
 """
@@ -24,41 +25,80 @@ RB = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--rb" and i 
 D = m.build(pd.Timestamp(ASOF))
 if RB: D["rebalance"] = {**D["rebalance"], "actual_date": RB, "source": "assumed"}
 BM = D["universe"]
+# 기간 옵션 (2026-10-21): --1m = 기준일 한 달 전 날짜의 종가부터, --from = 지정일 종가부터. 미지정이면 MTD (기존과 동일)
+FROM = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--from" and i + 1 < len(sys.argv)), None)
+if "--1m" in sys.argv:
+    FROM = str((pd.Timestamp(ASOF) - pd.DateOffset(months=1)).date())
+Dp = m.build(pd.Timestamp(D["base"])) if FROM and FROM < D["base"] else None   # 기간이 전월로 넘어가면 전월 데이터도
 # --gross 0.19: 배포 gross 를 가정값으로 재스케일 (모든 비중·기여가 선형이라 배율 하나로 처리)
-K = (GROSS / D["gross_cur"]) if GROSS else 1.0
-if GROSS:
-    for s_ in D["stocks"]:
-        for key in ("w_prev", "w_cur", "wb_prev", "wb_cur"): s_[key] *= K
-        for key in ("style_prev", "style_cur", "sb_prev", "sb_cur"): s_[key] = {x: v * K for x, v in s_[key].items()}
-        for key in ("f_prev", "f_cur"): s_[key] = [[i, w * K] for i, w in s_[key]]
-    D["gross_cur"] *= K; D["gross_prev"] = (D["gross_prev"] or 0) * K
-    for a in (D["bm_adj"].get("cur") or {}, D["bm_adj"].get("prev") or {}):
+
+
+def scale_gross(Dx):
+    Kx = GROSS / Dx["gross_cur"]
+    for s_ in Dx["stocks"]:
+        for key in ("w_prev", "w_cur", "wb_prev", "wb_cur"): s_[key] *= Kx
+        for key in ("style_prev", "style_cur", "sb_prev", "sb_cur"): s_[key] = {x: v * Kx for x, v in s_[key].items()}
+        for key in ("f_prev", "f_cur"): s_[key] = [[i, w * Kx] for i, w in s_[key]]
+    Dx["gross_cur"] *= Kx; Dx["gross_prev"] = (Dx["gross_prev"] or 0) * Kx
+    for a in (Dx["bm_adj"].get("cur") or {}, Dx["bm_adj"].get("prev") or {}):
         for key in ("removed_long", "removed_short", "long_before", "short_before", "target"):
-            if key in a: a[key] *= K
+            if key in a: a[key] *= Kx
+
+
+if GROSS:
+    for Dx in (D, Dp):
+        if Dx is not None: scale_gross(Dx)
 dates = D["dates"]; idx = len(dates) - 1
 k = sum(d <= D["rebalance"]["actual_date"] for d in dates) - 1   # 교대일이 기준일(월말) 이하이면 -1 = 당월 북이 월초부터 (g[0]=1 이라 stitch 식 그대로 성립)
 RB_TXT = (f"{dates[0]} 시가(월초 당월 북 적용)" if k < 0 else f"{D['rebalance']['actual_date']} 종가 교대{' 가정' if RB else ''}")
-styles = D["styles"]; factors = D["factors"]; fstyle = D["factor_style"]; fname = D["factor_name"]
+# 구간 = (데이터, 시작 인덱스(-1 = 월초), 교대 인덱스, 끝 인덱스). 기여 = 끝까지 누적 - 시작까지 누적 (같은 이어붙이기 식)
+if Dp is not None:
+    dp_ = Dp["dates"]
+    segs = [(Dp, sum(d <= FROM for d in dp_) - 1, sum(d <= Dp["rebalance"]["actual_date"] for d in dp_) - 1, len(dp_) - 1),
+            (D, -1, k, idx)]
+else:
+    segs = [(D, (sum(d <= FROM for d in dates) - 1) if FROM else -1, k, idx)]
+S0 = segs[0]
+START = S0[0]["dates"][S0[1]] if S0[1] >= 0 else S0[0]["base"]   # 기간 시작 종가일
+PERIOD = "최근 1개월" if "--1m" in sys.argv else ("기간" if FROM else "MTD")
+styles = D["styles"] + [x for x in (Dp["styles"] if Dp else []) if x not in D["styles"]]
+fstyle = {**(Dp["factor_style"] if Dp else {}), **D["factor_style"]}; fname = {**(Dp["factor_name"] if Dp else {}), **D["factor_name"]}
 
-st = {s: dict(long=0.0, short=0.0, c=0.0) for s in styles}
-fc = {f: dict(long=0.0, short=0.0, c=0.0) for f in factors}
+st, fc = {}, {}
+
+
+def add(dct, key, field, v):
+    dct.setdefault(key, dict(long=0.0, short=0.0, c=0.0))[field] += v
+
+
 tot = 0.0; tot_mp = 0.0
-for s, ret in zip(D["stocks"], D["ret"]):
-    g = np.cumprod(np.r_[1.0, 1.0 + np.array(ret)])
-    stitch = lambda wp, wc: wp * (g[k + 1] - 1) + wc * (g[idx + 1] / g[k + 1] - 1)
-    tot += stitch(s["wb_prev"], s["wb_cur"]); tot_mp += stitch(s["w_prev"], s["w_cur"])
-    for key, v in s["sb_cur"].items():   # 활성 북 = 당월 (기준일 > 리밸런싱일)
-        if v > 0: st[key]["long"] += v
-        else: st[key]["short"] += v
-    for key in set(s["sb_prev"]) | set(s["sb_cur"]):
-        st[key]["c"] += stitch(s["sb_prev"].get(key, 0.0), s["sb_cur"].get(key, 0.0))
-    rp = (s["wb_prev"] / s["w_prev"]) if s["w_prev"] else 0.0; rc = (s["wb_cur"] / s["w_cur"]) if s["w_cur"] else 0.0
-    fp = {factors[i]: w * rp for i, w in s["f_prev"]}; fcu = {factors[i]: w * rc for i, w in s["f_cur"]}
-    for f, v in fcu.items():
-        if v > 0: fc[f]["long"] += v
-        else: fc[f]["short"] += v
-    for f in set(fp) | set(fcu):
-        fc[f]["c"] += stitch(fp.get(f, 0.0), fcu.get(f, 0.0))
+stk_d = {}   # (isin, ticker) -> [stock(당월 북 우선), 기여, 기간 성장률] — 상하위 종목 차트용 (2026-10-21)
+for Dx, i0, kx, ix in segs:
+    cur_seg = Dx is D   # 롱/숏 노출은 당월(현재) 북만
+    fx = Dx["factors"]
+    for s, ret in zip(Dx["stocks"], Dx["ret"]):
+        g = np.cumprod(np.r_[1.0, 1.0 + np.array(ret)])
+
+        def cum(wp, wc, t):   # t 날 종가까지 이어붙인 누적 기여 (t<=교대일이면 전월 북만)
+            if t < 0: return 0.0
+            return wp * (g[t + 1] - 1) if t <= kx else wp * (g[kx + 1] - 1) + wc * (g[t + 1] / g[kx + 1] - 1)
+        seg = lambda wp, wc: cum(wp, wc, ix) - cum(wp, wc, i0)
+        c_s = seg(s["wb_prev"], s["wb_cur"])
+        tot += c_s; tot_mp += seg(s["w_prev"], s["w_cur"])
+        e = stk_d.setdefault((s["isin"], s["ticker"]), [s, 0.0, 1.0])
+        if cur_seg: e[0] = s
+        e[1] += c_s; e[2] *= g[ix + 1] / g[i0 + 1]
+        if cur_seg:
+            for key, v in s["sb_cur"].items(): add(st, key, "long" if v > 0 else "short", v)
+        for key in set(s["sb_prev"]) | set(s["sb_cur"]):
+            add(st, key, "c", seg(s["sb_prev"].get(key, 0.0), s["sb_cur"].get(key, 0.0)))
+        rp = (s["wb_prev"] / s["w_prev"]) if s["w_prev"] else 0.0; rc = (s["wb_cur"] / s["w_cur"]) if s["w_cur"] else 0.0
+        fp = {fx[i]: w * rp for i, w in s["f_prev"]}; fcu = {fx[i]: w * rc for i, w in s["f_cur"]}
+        if cur_seg:
+            for f, v in fcu.items(): add(fc, f, "long" if v > 0 else "short", v)
+        for f in set(fp) | set(fcu):
+            add(fc, f, "c", seg(fp.get(f, 0.0), fcu.get(f, 0.0)))
+stk = [(s_, c_, gr_ - 1) for s_, c_, gr_ in stk_d.values()]
 
 sdf = pd.DataFrame(st).T; sdf["gross"] = sdf.long - sdf.short; sdf = sdf[(sdf.gross > 0) | (sdf.c.abs() > 1e-12)].sort_values("gross", ascending=False)
 fdf = pd.DataFrame(fc).T; fdf["gross"] = fdf.long - fdf.short; fdf = fdf[(fdf.gross > 0) | (fdf.c.abs() > 1e-12)]; fdf["style"] = fdf.index.map(fstyle)  # 전월 북에만 있던 팩터(당월 gross 0)의 교대 전 기여 포함
@@ -75,10 +115,16 @@ INK, MUTED, UP, DOWN, LINE = "#14171c", "#6b7280", "#168a54", "#c23d4a", "#d9dde
 fig = plt.figure(figsize=(8.27, 11.69)); fig.patch.set_facecolor("white")
 pct = lambda x, d=2: f"{x*100:+.{d}f}%"; pu = lambda x, d=2: f"{x*100:.{d}f}%"; bp = lambda x: f"{x*1e4:+.1f}bp"
 
+FUND = {"MXWO": "KIC", "MXCN1A": "BOK"}  # 파일명 펀드 표기 (2026-10-21)
 TITLE_NAME = {"MXWO": "QMIND KIC", "MXCN1A": "QMind BOK"}  # PDF 제목 표기 (사용자 지정 2026-09-21); 파일명·폴더는 유니버스 코드 유지
 fig.text(0.07, 0.955, f"{TITLE_NAME.get(BM, f'QMind {BM}')} MP 성과 분석", fontsize=14, weight="bold", color=INK)
-fig.text(0.07, 0.933, f"{D['base']} → {ASOF} 종가 · 실현 기준(리밸런싱 {RB_TXT}) · 배포 비중(gross {D['gross_cur']*100:.0f}%)", fontsize=8.5, color=MUTED)
-fig.text(0.07, 0.905, f"MTD 기여  {bp(tot)}", fontsize=20, weight="bold", color=UP if tot > 0 else DOWN)
+if Dp is not None:
+    RB_P = Dp["rebalance"]["actual_date"]
+    fig.text(0.07, 0.933, f"{START} → {ASOF} 종가 · 실현 기준(리밸런싱 {RB_P}, {RB_TXT}) · 배포 비중(gross {Dp['gross_cur']*100:.0f}% / {D['gross_cur']*100:.0f}%)",
+             fontsize=8.5, color=MUTED)
+else:
+    fig.text(0.07, 0.933, f"{START} → {ASOF} 종가 · 실현 기준(리밸런싱 {RB_TXT}) · 배포 비중(gross {D['gross_cur']*100:.0f}%)", fontsize=8.5, color=MUTED)
+fig.text(0.07, 0.905, f"{PERIOD} 기여  {bp(tot)}", fontsize=20, weight="bold", color=UP if tot > 0 else DOWN)
 
 def table(ax, title, header, rows, colw, colors=None, total_rows=0):
     ax.axis("off"); ax.set_title(title, loc="left", fontsize=10.5, weight="bold", color=INK, pad=6)
@@ -113,24 +159,24 @@ def clean(ax):
     for sp in ["top", "right", "left"]: ax.spines[sp].set_visible(False)
     ax.spines["bottom"].set_color(LINE); ax.xaxis.grid(True, color=LINE, lw=0.5); ax.set_axisbelow(True); ax.tick_params(length=0)
 
-def contrib_chart(ax, labels, vals, colors, split_after=None):
-    """왼쪽 막대 차트 공통: 위가 1등. 막대 끝에 bp 라벨. split_after 행 뒤에 점선."""
+def contrib_chart(ax, labels, vals, colors, split_after=None, fs=7.0, vfs=6.8):
+    """왼쪽 막대 차트 공통: 위가 1등. 막대 끝에 bp 라벨. split_after 행 뒤에 점선. fs/vfs = 라벨/값 글자 크기."""
     n_ = len(vals); ys = range(n_)
     ax.barh(ys, vals, color=colors, height=0.62)
-    ax.set_yticks(list(ys)); ax.set_yticklabels(labels, fontsize=7.0, linespacing=1.15); ax.invert_yaxis()
+    ax.set_yticks(list(ys)); ax.set_yticklabels(labels, fontsize=fs, linespacing=1.15); ax.invert_yaxis()
     ax.axvline(0, color=INK, lw=0.6)
     lim = max(abs(min(vals)), abs(max(vals)), 1e-9) * 1.35
     for k_, v in enumerate(vals):
-        ax.text(v + (lim * 0.02 if v >= 0 else -lim * 0.02), k_, f"{v:+.1f}", va="center", ha="left" if v >= 0 else "right", fontsize=6.8, color=INK)
+        ax.text(v + (lim * 0.02 if v >= 0 else -lim * 0.02), k_, f"{v:+.1f}", va="center", ha="left" if v >= 0 else "right", fontsize=vfs, color=INK)
     ax.set_xlim(-lim, lim); ax.set_ylim(n_ - 0.4, -0.6)
-    ax.tick_params(axis="x", labelsize=6.8); ax.set_xlabel("기여 (bp)", fontsize=7.5, color=MUTED); clean(ax)
+    ax.tick_params(axis="x", labelsize=vfs); ax.set_xlabel("기여 (bp)", fontsize=7.5, color=MUTED); clean(ax)
     if split_after is not None: ax.axhline(split_after - 0.5, color=LINE, lw=0.8, ls="--")
 
-def right_notes(ax, texts, header):
+def right_notes(ax, texts, header, fs=7.0):
     tr = blend(ax.transAxes, ax.transData)
-    ax.text(1.06, -0.75, header, transform=tr, fontsize=6.6, color=MUTED, va="bottom")
+    ax.text(1.06, -0.75, header, transform=tr, fontsize=min(6.6, fs), color=MUTED, va="bottom")
     for k_, t_ in enumerate(texts):
-        ax.text(1.06, k_, t_, transform=tr, fontsize=7.0, color=INK, va="center", family="monospace")
+        ax.text(1.06, k_, t_, transform=tr, fontsize=fs, color=INK, va="center", family="monospace")
 
 # ── 공통 범례 (제목 아래 한 줄)
 fig.legend(handles=[Patch(color=scol_(x), label=x) for x in styles if x in alloc_st], loc="upper left", bbox_to_anchor=(0.07, 0.885),
@@ -180,10 +226,29 @@ top = fdf.sort_values("c", ascending=False).head(10); bot = fdf.sort_values("c",
 sel = pd.concat([top, bot.iloc[::-1]]).drop_duplicates()
 n_top = len(top)
 fig.text(0.07, 0.535, "상하위 TOP 10 팩터 기여", fontsize=10.5, weight="bold", color=INK)
-ax2 = fig.add_axes([0.31, 0.06, 0.42, 0.44])
-contrib_chart(ax2, [f"{f_}\n{fname.get(f_, '')[:30]}" for f_ in sel.index], list(sel.c * 1e4), [scol_(x) for x in sel["style"]], split_after=n_top)
-right_notes(ax2, [wfmt(FW.get(f_, 0.0), r.long, r.short) for f_, r in sel.iterrows()], "비중 (롱숏 평균)")
+ax2 = fig.add_axes([0.215, 0.06, 0.165, 0.44])   # 아래쪽 좌측 절반 (우측은 종목 기여, 2026-10-21)
+contrib_chart(ax2, [f"{f_}\n{fname.get(f_, '')[:24]}" for f_ in sel.index], list(sel.c * 1e4), [scol_(x) for x in sel["style"]],
+              split_after=n_top, fs=6.2, vfs=6.2)
+right_notes(ax2, [wfmt(FW.get(f_, 0.0), r.long, r.short) for f_, r in sel.iterrows()], "비중 (롱숏 평균)", fs=6.2)
+
+# ── 3) 종목: 기여 상·하위 10 (페이지 합계와 같은 이어붙이기·같은 비중), 라벨 = Bloomberg 티커 / 짧은 이름, 막대 색 = 롱/숏
+LONG_C, SHORT_C = "#44546a", "#b8c0cc"
+def _side(s_):
+    return s_["wb_cur"] if s_["wb_cur"] else s_["wb_prev"]   # 전월 북에만 있던 종목은 전월 비중으로
+sk = pd.DataFrame([{"tk": s_.get("bbg_ticker") or str(s_["ticker"]).replace(" Equity", "").strip() or s_["isin"],
+                    "nm": (s_.get("short_name") or s_["name"])[:18], "c": c_, "w": _side(s_), "r": r_} for s_, c_, r_ in stk])
+sk = sk[sk.c != 0]
+ts_ = sk.sort_values("c", ascending=False).head(10); bs_ = sk.sort_values("c").head(10)
+ss_ = pd.concat([ts_, bs_.iloc[::-1]])
+fig.text(0.535, 0.535, "상하위 TOP 10 종목 기여", fontsize=10.5, weight="bold", color=INK)
+fig.legend(handles=[Patch(color=LONG_C, label="롱"), Patch(color=SHORT_C, label="숏")], loc="upper left", bbox_to_anchor=(0.80, 0.546),
+           ncol=2, fontsize=6.4, frameon=False, handlelength=1.0, columnspacing=1.0, handletextpad=0.4)
+ax3 = fig.add_axes([0.665, 0.06, 0.155, 0.44])
+contrib_chart(ax3, [f"{t_}\n{n_}" for t_, n_ in zip(ss_.tk, ss_.nm)], list(ss_.c * 1e4), [LONG_C if w_ > 0 else SHORT_C for w_ in ss_.w],
+              split_after=len(ts_), fs=6.2, vfs=6.2)
+right_notes(ax3, [f"{w_*1e4:+5.1f} {r_*100:+6.1f}%" for w_, r_ in zip(ss_.w, ss_.r)], f"비중bp · {PERIOD} 수익률", fs=6.2)
 out_dir = m.OUTPUT_DIR / D["book_date"] / "mtd_pdf"; out_dir.mkdir(parents=True, exist_ok=True)
-out = str(out_dir / f"mtd_style_factor{'_bmuniv' if A else ''}_{ASOF}{f'_gross{GROSS*100:.0f}' if GROSS else ''}{f'_rb{RB[5:7]}{RB[8:10]}' if RB else ''}.pdf")
-fig.savefig(out, format="pdf"); fig.savefig(out.replace(".pdf", ".png"), dpi=130)
+PFX = "performance_analysis_1M" if "--1m" in sys.argv else (f"performance_analysis_from{START}" if FROM else "mtd_performance_analysis")
+out = str(out_dir / f"{PFX}_{FUND.get(BM, BM)}{'_bmuniv' if A else ''}_{ASOF}{f'_gross{GROSS*100:.0f}' if GROSS else ''}{f'_rb{RB[5:7]}{RB[8:10]}' if RB else ''}.pdf")
+fig.savefig(out, format="pdf", metadata={"Title": f"{TITLE_NAME.get(BM, BM)} MP Performance Analysis {ASOF}"}); fig.savefig(out.replace(".pdf", ".png"), dpi=130)
 print("saved", out)

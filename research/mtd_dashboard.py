@@ -51,6 +51,8 @@ FACTOR_STYLE: dict[str, str] = {}  # load_book 이 채움 (팩터 -> 스타일)
 FACTOR_WEIGHT: dict[str, dict[str, float]] = {}  # load_book 이 채움 (북 날짜 -> {팩터: factor_weight, 캡 후 배분 합~1})
 NAMES_PATH = UNIVERSE_DATA_DIR / "security_names.csv"
 INDUSTRY_PATH = UNIVERSE_DATA_DIR / "security_industry.csv"   # GICS 산업 그룹 (DB 에는 섹터만 있음)
+SHORT_PATH = UNIVERSE_DATA_DIR / "security_short_names.csv"  # Bloomberg SHORT_NAME (한 장 PDF 종목 라벨)
+TICKER_PATH = UNIVERSE_DATA_DIR / "security_tickers.csv"     # Bloomberg TICKER_AND_EXCH_CODE (예: "SLB US", "600519 CH")
 
 
 def _ref_cache(secs: list[str], field: str, path: Path, col: str) -> dict[str, str]:
@@ -74,6 +76,16 @@ def security_names(secs: list[str]) -> dict[str, str]:
 def security_industry(secs: list[str]) -> dict[str, str]:
     """sec -> GICS 산업 그룹 (테마 노출용: 반도체·하드웨어 vs 소비·필수소비 등 섹터보다 한 단계 세분)."""
     return _ref_cache(secs, "GICS_INDUSTRY_GROUP_NAME", INDUSTRY_PATH, "industry")
+
+
+def security_short_names(secs: list[str]) -> dict[str, str]:
+    """sec -> Bloomberg 짧은 이름 (한 장 PDF 종목 기여 라벨)."""
+    return _ref_cache(secs, "SHORT_NAME", SHORT_PATH, "short_name")
+
+
+def security_tickers(secs: list[str]) -> dict[str, str]:
+    """sec -> 거래소 코드가 붙은 Bloomberg 티커. DB 티커는 MXWO 에 거래소가 없고 MXCN1A 는 ' Equity' 형식이라 표시용으로 따로 받는다."""
+    return _ref_cache(secs, "TICKER_AND_EXCH_CODE", TICKER_PATH, "bbg_ticker")
 
 
 def factor_meta() -> dict[str, str]:
@@ -361,6 +373,8 @@ def build(asof: pd.Timestamp) -> dict:
         return [[fidx[k], round(v, 8)] for k, v in d.items()] if isinstance(d, dict) else []
     names = security_names(sorted(set(m1["sec"])))
     industry = security_industry(sorted(set(m1["sec"])))
+    short = security_short_names(sorted(set(m1["sec"])))
+    btick = security_tickers(sorted(set(m1["sec"])))
     # BM 유니버스 제한본 (임시 탭): 비중·스타일 열에 종목별 배율 적용
     wb_cur, fb_cur, adj_cur = bm_restrict(cur)
     wb_cur.index = fb_cur.index = cur["isin"].values
@@ -380,6 +394,7 @@ def build(asof: pd.Timestamp) -> dict:
         stocks.append({"isin": isin, "ticker": str(row["ticker"]) if pd.notna(row["ticker"]) else "", "name": names.get(row["sec"], ""),
                        "sector": row["sector"] if pd.notna(row["sector"]) else "n/a",
                        "industry": industry.get(row["sec"], "n/a"),
+                       "bbg_ticker": btick.get(row["sec"], ""), "short_name": short.get(row["sec"], ""),
                        "country": row["country"] if pd.notna(row["country"]) else "n/a",
                        "w_prev": float(w_prev.get(isin, 0.0)), "w_cur": float(w_cur.get(isin, 0.0)),
                        "style_prev": sp_, "style_cur": sc_,
