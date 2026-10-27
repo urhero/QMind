@@ -83,6 +83,7 @@ tailwind.config = { theme: { extend: {
   <div id="ctrl" class="no-print border-t border-line bg-card">
     <div class="max-w-6xl mx-auto px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
       <span class="text-xs text-muted uppercase tracking-wider">설정 <span class="normal-case tracking-normal">· MTD 와 주간 리포트 공통</span></span>
+      <label class="flex items-center gap-2"><span class="text-xs text-muted">시작</span><select id="start-select" class="font-mono num"></select></label>
       <label class="flex items-center gap-2"><span class="text-xs text-muted">기준일</span><select id="date-select" class="font-mono num"></select></label>
       <input id="date-range" type="range" min="0" max="0" value="0" class="w-40">
       <div class="seg flex border border-line rounded-md overflow-hidden"><button data-mode="realized" class="on">실현</button><button data-mode="model">모델</button></div>
@@ -97,7 +98,7 @@ tailwind.config = { theme: { extend: {
 <!-- ═══════════ MTD ═══════════ -->
 <div id="tab-dash" class="space-y-14">
   <section>
-    <p class="text-xs uppercase tracking-[.18em] text-muted">Month-to-date · <span id="k-mode-label">실현</span> 기준 · USD</p>
+    <p class="text-xs uppercase tracking-[.18em] text-muted"><span id="k-period">Month-to-date</span> · <span id="k-mode-label">실현</span> 기준 · USD</p>
     <div class="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2">
       <span id="k-realized" class="text-6xl font-semibold tracking-tight num leading-none">--</span>
       <span class="text-sm text-muted2"><span id="k-realized-date" class="num"></span> 종가 기준 · BM <span id="k-bm-name"></span> <span id="k-bm" class="num font-medium"></span></span>
@@ -247,10 +248,10 @@ const wfmt = (a, lo, sh) => `${(a * 100).toFixed(1)}% (${((lo - sh) / 2 * 100).t
 const cls = (x) => x > 0 ? 'text-up' : x < 0 ? 'text-down' : 'text-muted2';
 const n = D.dates.length, ns = D.stocks.length;
 const logIdx = D.dates.indexOf(D.rebalance.actual_date);
-let idx = n - 1, mode = 'realized', rbIdx = logIdx, scalePrev = false, tab = 'dash', fsort = 'weight';
+let idx = n - 1, j0 = -1, mode = 'realized', rbIdx = logIdx, scalePrev = false, tab = 'dash', fsort = 'weight';   // j0 = 시작 종가 인덱스 (-1 = 전월말 = MTD, 2026-10-23)
 
 const STYLE_COLORS = { 'Valuation': '#2f5fd1', 'Earnings Quality': '#c94f9a', 'Historical Growth': '#17957a', 'Capital Efficiency': '#c98a1e',
-  'Analyst Expectations': '#b8552f', 'Price Momentum': '#7b5cc7', 'Volatility': '#8a8f98', 'Size': '#3f9fc2' };
+  'Analyst Expectations': '#b8552f', 'Price Momentum': '#9bbf2a', 'Volatility': '#8a8f98', 'Size': '#3f9fc2' };
 const sc = (s) => STYLE_COLORS[s] || '#9aa0a6';
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const stTag = (s) => `<span class="text-xs" style="color:${sc(s)}">${s}</span>`;
@@ -270,6 +271,9 @@ function stitch(wp, wc, i, t, k, useModel) {
   return wp * (G[i][k + 1] - 1) + wc * (G[i][t + 1] / G[i][k + 1] - 1);
 }
 const contribAt = (i, t, k, useModel) => stitch(D.stocks[i].w_prev * wPrev(), D.stocks[i].w_cur, i, t, k, useModel);
+const span = (wp, wc, i, k, useModel) => stitch(wp, wc, i, idx, k, useModel) - stitch(wp, wc, i, j0, k, useModel);   // 기간 (j0, idx] 기여 (PDF --from 과 같은 식)
+const at = (arr) => arr[idx] - (j0 >= 0 ? arr[j0] : 0);
+const startLbl = () => j0 >= 0 ? D.dates[j0] : D.base;
 function seriesFor(k) {
   const model = [], realized = [], prevseg = [];
   for (let t = 0; t < n; t++) { let m = 0, r = 0, p = 0;
@@ -304,6 +308,10 @@ window.addEventListener('afterprint', () => { if (window.__dark) document.docume
 const sel = $('date-select'), rng = $('date-range'), rbSel = $('rb-select');
 D.dates.forEach((d, i) => { const o = document.createElement('option'); o.value = i; o.textContent = d; sel.appendChild(o); });
 rng.max = n - 1; rng.value = idx; sel.value = idx;
+const sSel = $('start-select');
+[['-1', `전월말 (${D.base})`], ...D.dates.map((d, i) => [String(i), d])].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sSel.appendChild(o); });
+sSel.value = '-1';
+sSel.onchange = () => { j0 = Math.min(+sSel.value, idx - 1); sSel.value = String(j0); drawAll(); };
 sel.onchange = () => setIdx(+sel.value); rng.oninput = () => setIdx(+rng.value);
 [['-1', `월말 종가 (${D.base})`], ...D.dates.map((d, i) => [String(i), `${i + 1}영업일 (${d})`])].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; rbSel.appendChild(o); });
 rbSel.value = String(rbIdx);
@@ -311,7 +319,7 @@ rbSel.onchange = () => { rbIdx = +rbSel.value; S = seriesFor(rbIdx); drawAll(); 
 $('rb-scale').onchange = (e) => { scalePrev = e.target.checked; S = seriesFor(rbIdx); drawAll(); };
 document.querySelectorAll('.seg button[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; document.querySelectorAll('.seg button[data-mode]').forEach(x => x.classList.toggle('on', x === b)); drawAll(); });
 document.querySelectorAll('#fsort button').forEach(b => b.onclick = () => { fsort = b.dataset.sort; document.querySelectorAll('#fsort button').forEach(x => x.classList.toggle('on', x === b)); render(); });
-function setIdx(i) { if (i < 0) return; idx = i; sel.value = i; rng.value = i; if (tab === 'stocks' || tab === 'stocksbm') drawAll(); else { drawCum(); render(); } }
+function setIdx(i) { if (i < 0) return; idx = i; sel.value = i; rng.value = i; if (j0 >= idx) { j0 = idx - 1; sSel.value = String(j0); } if (tab === 'stocks' || tab === 'stocksbm') drawAll(); else { drawCum(); render(); } }
 
 // ── 누적 차트
 const cfg = { displayModeBar: false, responsive: true };
@@ -322,6 +330,7 @@ function cumTraces() { return [
   { x: D.dates, y: D.bm_cum.map(v => v * 100), name: `BM ${D.universe} (우축)`, yaxis: 'y2', line: { color: css('--up'), width: 1.2 }, opacity: .7, hovertemplate: '%{y:+.4f}%<extra>BM</extra>' } ]; }
 function cumLayout(compact) { const t = plotTheme();
   const shapes = [{ type: 'line', x0: D.dates[idx], x1: D.dates[idx], y0: 0, y1: 1, yref: 'paper', line: { color: css('--ink'), width: 1 } }], ann = [];
+  if (j0 >= 0) shapes.push({ type: 'rect', x0: D.dates[j0], x1: D.dates[idx], y0: 0, y1: 1, yref: 'paper', fillcolor: css('--accent'), opacity: 0.08, line: { width: 0 }, layer: 'below' });
   if (rbIdx >= 0) { shapes.push({ type: 'line', x0: D.dates[rbIdx], x1: D.dates[rbIdx], y0: 0, y1: 1, yref: 'paper', line: { color: css('--down'), width: 1, dash: 'dash' } });
     ann.push({ x: D.dates[rbIdx], y: 1, yref: 'paper', text: '리밸런싱', showarrow: false, xanchor: 'left', yanchor: 'top', font: { color: css('--down'), size: 11 } }); }
   return { ...t, margin: { l: 52, r: 52, t: 8, b: compact ? 34 : 44 }, hovermode: 'x unified', legend: { orientation: 'h', y: -0.16, font: { size: 11 } },
@@ -336,13 +345,14 @@ function drawCum() { Plotly.react('chart', cumTraces(), cumLayout(false), cfg);
 function row(cells, cl = '') { return `<tr class="${cl}">${cells.map(c => `<td class="${c.c || ''} ${c.l ? 'l' : 'num font-mono'}">${c.v}</td>`).join('')}</tr>`; }
 function render() {
   const useModel = mode === 'model', afterRb = useModel || rbIdx < 0 || idx > rbIdx, k = rbIdx;
-  const rows = D.stocks.map((s, i) => ({ ...s, w: afterRb ? s.w_cur : s.w_prev * wPrev(), c: contribAt(i, idx, k, useModel) })).filter(r => r.w !== 0 || r.c !== 0);
+  const rows = D.stocks.map((s, i) => ({ ...s, w: afterRb ? s.w_cur : s.w_prev * wPrev(), c: span(s.w_prev * wPrev(), s.w_cur, i, k, useModel) })).filter(r => r.w !== 0 || r.c !== 0);
   const total = rows.reduce((a, r) => a + r.c, 0);
-  const rz = S.realized[idx], md = S.model[idx], ps = S.prevseg[idx], bm = D.bm_cum[idx];
+  const rz = at(S.realized), md = at(S.model), ps = at(S.prevseg), bm = (1 + D.bm_cum[idx]) / (1 + (j0 >= 0 ? D.bm_cum[j0] : 0)) - 1;
   const isLog = k === logIdx, manual = D.rebalance.source === 'manual';
   const set = (id, v) => { const e = $(id); e.textContent = pc(v); e.className = e.className.replace(/text-(up|down|muted2)/g, '').trim() + ' ' + cls(v); };
   set('k-realized', useModel ? md : rz); set('k-model', md); set('k-timing', rz - md); set('k-prevseg', ps); set('k-curseg', rz - ps); set('k-bm', bm);
-  $('k-mode-label').textContent = useModel ? '모델' : '실현'; $('k-realized-date').textContent = D.dates[idx];
+  $('k-mode-label').textContent = useModel ? '모델' : '실현'; $('k-realized-date').textContent = j0 >= 0 ? `${D.dates[j0]} → ${D.dates[idx]}` : D.dates[idx];
+  $('k-period').textContent = j0 >= 0 ? `기간 (${idx - j0}영업일)` : 'Month-to-date';
   $('rb-line').innerHTML = `리밸런싱 <b class="num">${k >= 0 ? D.dates[k] : '월말'}</b> · ${isLog ? (manual ? '로그 (수동 지정)' : '로그 (규칙: 3번째 거래일)') : `<span class="text-down">가정</span> (로그 ${D.rebalance.actual_date})`} · 전월 북 ${D.prev_book_date || '-'} gross ${(D.gross_prev * 100).toFixed(0)}% → 당월 북 ${D.book_date} gross ${(D.gross_cur * 100).toFixed(0)}%${scalePrev ? ' (전월 규모를 당월과 맞춤)' : ''}`;
   $('rb-badge').textContent = isLog ? '로그' : '가정'; $('rb-badge').style.color = isLog ? '' : css('--down');
 
@@ -367,10 +377,10 @@ function render() {
   D.stocks.forEach((s, i) => {
     const sp = s.style_prev || {}, scu = s.style_cur || {};
     new Set([...Object.keys(sp), ...Object.keys(scu)]).forEach(kk => { if (!st[kk]) return; const wp = (sp[kk] || 0) * wPrev(), wc = scu[kk] || 0, wa = afterRb ? wc : wp;
-      if (wa > 0) st[kk].long += wa; else if (wa < 0) st[kk].short += wa; st[kk].c += stitch(wp, wc, i, idx, k, useModel); });
+      if (wa > 0) st[kk].long += wa; else if (wa < 0) st[kk].short += wa; st[kk].c += span(wp, wc, i, k, useModel); });
     const mp = new Map(s.f_prev || []), mc = new Map(s.f_cur || []);
     new Set([...mp.keys(), ...mc.keys()]).forEach(fi => { const wp = (mp.get(fi) || 0) * wPrev(), wc = mc.get(fi) || 0, wa = afterRb ? wc : wp;
-      if (wa > 0) fc[fi].long += wa; else if (wa < 0) fc[fi].short += wa; const c = stitch(wp, wc, i, idx, k, useModel); fc[fi].c += c; fc[fi].w1 += c - stitch(wp, wc, i, i5, k, useModel); });
+      if (wa > 0) fc[fi].long += wa; else if (wa < 0) fc[fi].short += wa; const c = stitch(wp, wc, i, idx, k, useModel); fc[fi].c += span(wp, wc, i, k, useModel); fc[fi].w1 += c - stitch(wp, wc, i, i5, k, useModel); });
   });
   // 스타일 배분 (팩터 비중 합, 활성 북)
   const fwAct = afterRb ? D.factor_weight : (Object.keys(D.factor_weight_prev || {}).length ? D.factor_weight_prev : D.factor_weight);
@@ -413,7 +423,7 @@ function render() {
   const lc = rows.filter(r => r.w > 0).reduce((a, r) => a + r.c, 0), scc = rows.filter(r => r.w < 0).reduce((a, r) => a + r.c, 0);
   set('r-realized', rz); set('r-model', md); set('r-timing', rz - md); set('r-bm', bm);
   $('r-side').innerHTML = `<span class="${cls(lc)}">${pc(lc)}</span> / <span class="${cls(scc)}">${pc(scc)}</span>`;
-  $('p-sub').textContent = `${D.base} → ${D.dates[idx]} · 리밸런싱 ${k >= 0 ? D.dates[k] : '월말'} (${isLog ? '로그' : '가정'}) · ${useModel ? '모델' : '실현'} 기준 · 전월 북 ${D.prev_book_date || '-'} / 당월 북 ${D.book_date}`;
+  $('p-sub').textContent = `${startLbl()} → ${D.dates[idx]} · 리밸런싱 ${k >= 0 ? D.dates[k] : '월말'} (${isLog ? '로그' : '가정'}) · ${useModel ? '모델' : '실현'} 기준 · 전월 북 ${D.prev_book_date || '-'} / 당월 북 ${D.book_date}`;
 }
 
 // ── 종목 기여 탭 (설정 바 기간, 배포 기준). bm=true 면 실제 BM 유니버스 제한본(임시 탭)
@@ -424,8 +434,8 @@ document.querySelectorAll('#sb-side button').forEach(b => b.onclick = () => { sb
 if (!(D.bm_adj && D.bm_adj.enabled)) $('tab-btn-bm').style.display = 'none';
 function avgWeightW(i, wp, wc, k, useModel) {   // 기간 동안 날마다 들고 있던 비중의 평균 (드리프트·교대 반영)
   let sum = 0;
-  for (let t = 0; t <= idx; t++) { if (useModel || k < 0) sum += wc * G[i][t]; else if (t <= k) sum += wp * G[i][t]; else sum += wc * G[i][t] / G[i][k + 1]; }
-  return sum / (idx + 1);
+  for (let t = j0 + 1; t <= idx; t++) { if (useModel || k < 0) sum += wc * G[i][t]; else if (t <= k) sum += wp * G[i][t]; else sum += wc * G[i][t] / G[i][k + 1]; }
+  return sum / (idx - j0);
 }
 function renderStocks(bm) {
   const useModel = mode === 'model', k = rbIdx, afterRb = useModel || k < 0 || idx > k, pv = wPrev();
@@ -433,7 +443,7 @@ function renderStocks(bm) {
   const rows = D.stocks.map((s, i) => { const wp = (bm ? s.wb_prev : s.w_prev) * pv, wc = bm ? s.wb_cur : s.w_cur;
     const spr = {}; Object.entries((bm ? s.sb_prev : s.style_prev) || {}).forEach(([x, v]) => spr[x] = v * pv);
     return { i, t: s.ticker || s.isin, name: s.name || '', sector: s.sector, country: s.country, aw: avgWeightW(i, wp, wc, k, useModel), w: afterRb ? wc : wp,
-      r: G[i][idx + 1] - 1, c: stitch(wp, wc, i, idx, k, useModel), st: afterRb ? ((bm ? s.sb_cur : s.style_cur) || {}) : spr }; })
+      r: G[i][idx + 1] / G[i][j0 + 1] - 1, c: span(wp, wc, i, k, useModel), st: afterRb ? ((bm ? s.sb_cur : s.style_cur) || {}) : spr }; })
     .filter(r => r.aw !== 0 || r.w !== 0 || r.c !== 0);
   const q = $(P + '-q').value.trim().toLowerCase(), side = bm ? sbSide : sSide, key = bm ? sbKey : sKey, asc = bm ? sbAsc : sAsc;
   let view = rows.filter(r => !q || [r.t, r.name, r.sector, r.country].join(' ').toLowerCase().includes(q));
@@ -452,7 +462,7 @@ function renderStocks(bm) {
     `<tr class="total"><td class="l">gross</td><td></td><td></td><td class="num font-mono">${pu(gross('aw'))}</td><td class="num font-mono">${pu(gross('w'))}</td><td></td><td></td>${STY.map(x => `<td class="num font-mono">${pu(gross('st:' + x))}</td>`).join('')}</tr>`;
   const total = rows.reduce((a, r) => a + r.c, 0);
   $(P + '-total').textContent = pc(total); $(P + '-total').className = 'text-3xl font-semibold tracking-tight num ' + cls(total);
-  $(P + '-sub').textContent = `${D.base} → ${D.dates[idx]} · ${useModel ? '모델' : '실현'} · 리밸런싱 ${k >= 0 ? D.dates[k] : '월말'} · 활성 북 ${afterRb ? D.book_date : D.prev_book_date} · ${rows.length}종목`;
+  $(P + '-sub').textContent = `${startLbl()} → ${D.dates[idx]} · ${useModel ? '모델' : '실현'} · 리밸런싱 ${k >= 0 ? D.dates[k] : '월말'} · 활성 북 ${afterRb ? D.book_date : D.prev_book_date} · ${rows.length}종목`;
   $(P + '-count').textContent = view.length === rows.length ? '' : `${view.length} / ${rows.length}종목 표시`;
   if (bm) {
     const A = D.bm_adj, line = (lab, a, bookDate) => !a || !a.n_book ? '' : `<p><b>${lab} (${bookDate})</b> BM 유니버스 ${a.n_univ}종목 · MP ${a.n_book}종목 중 유니버스 밖 <b>${a.n_removed}</b>종목 제외 (롱 ${pct(a.removed_long)}, 숏 ${pct(a.removed_short)}) → 남은 롱 ${pu(a.long_before)} / 숏 ${pu(a.short_before)} 을 각 ${pu(a.target)} 로 조정: <b>롱 x${a.scale_long.toFixed(3)}, 숏 x${a.scale_short.toFixed(3)}</b></p>`;
