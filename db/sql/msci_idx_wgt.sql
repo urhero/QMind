@@ -12,7 +12,7 @@
        CHINA A ONSHORE% (133333): domestic flag / DIF (기존 Store_MSCI_wgt_new 와 같음)
        CHINA A (718708): 홍콩 Stock Connect 라인(가격통화 CNH)만, family_std_flag / FIF, std_IIF 는 쓰지 않음
                          (EM·China 지수의 A주 부분편입 0.2 는 China A 지수엔 적용 안 됨 — 같은 종목 ADR 6개도 제외).
-                         2026-10-28 Bloomberg 구성 파일 415종목 일치, 비중 차 최대 5e-7%p.
+                         2026-10-28 bbg 구성 파일 415종목 일치, 비중 차 최대 5e-7%p.
        그 외: family_std_flag / FIF / std_IIF.
      bb_ticker 의 ' CG '/' CS '/' C1 '/' C2 ' -> ' CH ' 치환은 기존과 같다.
    - 소속 국가 (기준별):
@@ -412,7 +412,7 @@ BEGIN
 END
 GO
 
--- Bloomberg 업로드용: 기존 msci_bbu_csv 와 같은 컬럼·순서 (일별, 다음날 기준만). sedol·cusip 은 원천 NULL.
+-- bbg 업로드용: 기존 msci_bbu_csv 와 같은 컬럼·순서 (일별, 다음날 기준만). sedol·cusip 은 원천 NULL.
 -- 기존과 같게 ISO_country_symbol_next_day 칸에는 당일 국가를 넣는다 (기존 INSERT 가 위치로 넣어 생긴 관례).
 CREATE OR ALTER VIEW dbo.View_msci_idx_wgt_bbu AS
 SELECT CONVERT(varchar(10), CAST(w.calc_date AS datetime), 121) ddt, w.msci_index_code, ir.index_name, w.bb_ticker, w.wgt,
