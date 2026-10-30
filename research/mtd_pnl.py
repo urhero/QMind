@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MP 북의 MTD 손익 (전월말 -> 어제, Bloomberg 총수익지수 기준).
+"""MP 북의 MTD 손익 (전월말 -> 어제, bbg 총수익지수 기준).
 
 사용:
     python research/mtd_pnl.py                 # 어제 기준
@@ -7,9 +7,9 @@
 
 입력 : output/{BM}/<최신 기준일>/weights_mp_*.csv (ls_weight = 북 비중)
 매핑 : data/{BM}/figi_map.csv (isin -> 본상장 composite FIGI). 없는 ISIN 은 OpenFIGI 로 채움
-       (.env OPENFIGI_API_KEY 권장). Bloomberg 에 ISIN 을 직접 주면 미국 OTC 라인(KDDIF 등)으로
+       (.env OPENFIGI_API_KEY 권장). bbg 에 ISIN 을 직접 주면 미국 OTC 라인(KDDIF 등)으로
        풀리므로 반드시 /bbgid/<FIGI> 로 조회한다.
-가격 : Bloomberg Desktop API (터미널 로그인 필요). TOT_RETURN_INDEX_GROSS_DVDS = 배당 재투자 포함
+가격 : bbg Desktop API (터미널 로그인 필요). TOT_RETURN_INDEX_GROSS_DVDS = 배당 재투자 포함
        -> 로컬 통화 1회 + currency=USD 오버라이드 1회. 가격 소스는 get_tri() 하나로 격리.
 출력 : output/{BM}/<MP 기준일>/mtd_pnl_<asof>.csv + 콘솔 요약 (local / USD / FX 효과)
 """
@@ -100,11 +100,11 @@ def load_figi_map(book: pd.DataFrame) -> pd.DataFrame:
 
 
 def bdh(securities: list[str], field: str, start, end, currency: str | None = None) -> pd.DataFrame:
-    """date x security 일별 필드값 (Bloomberg HistoricalDataRequest). 유일한 가격 소스 접점."""
+    """date x security 일별 필드값 (bbg HistoricalDataRequest). 유일한 가격 소스 접점."""
     import blpapi
     s = blpapi.Session()
     if not (s.start() and s.openService("//blp/refdata")):
-        raise RuntimeError("Bloomberg session failed - terminal logged in?")
+        raise RuntimeError("bbg session failed - terminal logged in?")
     svc = s.getService("//blp/refdata")
     rows, errors = [], []
     for i in range(0, len(securities), 200):
@@ -142,11 +142,11 @@ def bdh(securities: list[str], field: str, start, end, currency: str | None = No
 
 
 def bdp(securities: list[str], fields: list[str]) -> pd.DataFrame:
-    """security x field 현재값 (Bloomberg ReferenceDataRequest). 종목명(NAME) 등 정적 속성용."""
+    """security x field 현재값 (bbg ReferenceDataRequest). 종목명(NAME) 등 정적 속성용."""
     import blpapi
     s = blpapi.Session()
     if not (s.start() and s.openService("//blp/refdata")):
-        raise RuntimeError("Bloomberg session failed - terminal logged in?")
+        raise RuntimeError("bbg session failed - terminal logged in?")
     svc = s.getService("//blp/refdata")
     out = {}
     for i in range(0, len(securities), 200):
@@ -184,9 +184,9 @@ def asof_ret(px: pd.DataFrame, base, asof) -> pd.Series:
 
 
 def attach_securities(w: pd.DataFrame) -> pd.DataFrame:
-    """북(isin, ticker, gvkeyiid, ls_weight) 에 country + Bloomberg 조회 식별자 'sec' 를 붙인다.
+    """북(isin, ticker, gvkeyiid, ls_weight) 에 country + bbg 조회 식별자 'sec' 를 붙인다.
 
-    MXCN1A 는 ticker 가 이미 Bloomberg 형식("000001 CH Equity") -> 그대로. 아니면 FIGI 매핑 (/bbgid/).
+    MXCN1A 는 ticker 가 이미 bbg 형식("000001 CH Equity") -> 그대로. 아니면 FIGI 매핑 (/bbgid/).
     FIGI 를 못 구한 행은 경고 후 제외.
     """
     w = w.merge(pd.read_parquet(UNIVERSE_DATA_DIR / "country_map.parquet"), on="gvkeyiid", how="left")

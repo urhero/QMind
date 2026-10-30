@@ -65,7 +65,7 @@
 **Production 적용 절차:**
 1. `config.py`: `"use_cluster_dedup": False` → `True`
 2. `mp` 실행 → 종목 수준 비중이 최초 1회 크게 변동 (예상 turnover ~80%)
-3. Bloomberg Optimizer dry-run으로 TE/제약 사전 확인 후 운영 적용
+3. bbg Optimizer dry-run으로 TE/제약 사전 확인 후 운영 적용
 
 ### Backtest CLI 적용 (코드 변경 없이 가능)
 ```bash
@@ -96,7 +96,7 @@ python main.py backtest 2009-12-31 2026-03-31 --turnover-alpha 0.1
 ### Style 편중 자연 노출
 - Cap=25% 해제하지 않으므로 규제 요건(스타일별 max 25%)은 유지
 - Clustering 후 cap 트리거가 거의 안 되지만, 가끔 트리거되므로 안전망 작동
-- Bloomberg Optimizer 에서 추가 제약 통과 가능성 매우 높음
+- bbg Optimizer 에서 추가 제약 통과 가능성 매우 높음
 
 ### 백테스트의 한계
 - 팩터-내부 종목 거래비용(30bp)은 반영, **팩터 간 비중 변경 비용은 미반영**
@@ -113,7 +113,7 @@ python main.py backtest 2009-12-31 2026-03-31 --turnover-alpha 0.1
 
 1. **`baseline` → `combo_18_0.1` 전환 결정** (CEO/PM 의사결정)
 2. **`mp` 회귀 테스트**: clustering on/off 에서 `total_aggregated_weights` diff 확인 + 종목 수준 차이 검토
-3. **Bloomberg Optimizer dry-run**: TE/제약 위반 여부 사전 확인
+3. **bbg Optimizer dry-run**: TE/제약 위반 여부 사전 확인
 4. **Rolling 36-month Sharpe 모니터링** 대시보드 (regime drift 감지)
 5. **추천 규칙 개선** (현 자동 규칙은 turnover 0.001 차이로 잘못 추천한 사례 있음)
 

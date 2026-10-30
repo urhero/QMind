@@ -6,7 +6,7 @@
 
 ## 외부 맥락 (코드에 없는 것)
 
-- **Bloomberg 연동:** 최종 output CSV는 Bloomberg Optimizer에 직접 입력하여 실행
+- **bbg 연동:** 최종 output CSV는 bbg Optimizer에 직접 입력하여 실행
 
 
 ## 컨벤션

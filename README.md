@@ -57,7 +57,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
    weight>0 팩터                     [6] ERC 가중 + TS모멘텀 틸트 + 스타일 캡
        │
        ▼
-   종목별 MP 비중 산출               [7] 섹터 숏캡 적용 + CSV 출력 → Bloomberg Optimizer
+   종목별 MP 비중 산출               [7] 섹터 숏캡 적용 + CSV 출력 → bbg Optimizer
 ```
 
 > **롤링 IS 48개월** (`is_window_months=48`): 규칙 학습·랭킹·가중 모두 매 시점
@@ -177,7 +177,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
   - `weights_factor_*.csv` — 종목×팩터 전개 행 + MP 합산 행 (감사 추적)
   - `weights_style_*.csv` — 스타일별 종목 집계
   - `weights_mp_*.csv` — style=MP 행만 = 종목별 최종 롱/숏 비중
-  - `weights_pivot_*.csv` — 피벗 형태 (Bloomberg Optimizer 입력)
+  - `weights_pivot_*.csv` — 피벗 형태 (bbg Optimizer 입력)
   - `meta_data.csv` — 팩터 성과 요약 (test 모드에서만 `meta_data_test_*.csv`로 바뀜)
 - 기준일 붙는 산출물은 전부 기준일 폴더 `output/{BENCHMARK}/<date>/` (2026-09-09); `mp test` 산출물은 `output/{BENCHMARK}/test/`
 - factor 가중치 + style 요약 → `output/{BENCHMARK}/mp_weight_history/` (production 실행 시 항상 저장, test 모드는 3종 모두 미저장)
@@ -187,7 +187,7 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 
 ### 프로덕션 활용
 - 본 코드는 **Model Portfolio(MP) 산출까지 담당**
-- 이후: Benchmark 대비 Tracking Error 점검 → Bloomberg Optimizer를 통한 프로덕션 매매 집행
+- 이후: Benchmark 대비 Tracking Error 점검 → bbg Optimizer를 통한 프로덕션 매매 집행
 
 ---
 
@@ -196,13 +196,13 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 기존 파이프라인([1]~[7])을 감싸 **롤링 48개월 윈도우**로 실행 (`is_window_months=48`; MXCN1A는 expanding). IS 데이터만으로 팩터 선정·가중치를 결정하고 OOS 1개월 수익률을 기록한다.
 
 - **계층적 리밸런싱**: Tier 1(6개월, 규칙 학습) / Tier 2(**1개월**, 팩터 선정+가중 — 월간 채택 2026-07-29) / Tier 3(매월, OOS 조회)
-- ⚠ **고회전 구성의 비용 회계**: factor-level 백테스트의 `backtest_cost_multiplier=0.6`은 저회전 전용 근사 — 월간 리밸에서는 실비용이 과소계상된다 (실측 netting 최대 1.8배). **정본 성과 판단은 배포 기준(종목단 재구성 + 목표 노출 고정) 실측**: `backtest` 실행이 `stock_level_series_{기준일}.csv` 로 함께 산출한다. **현 채택 스택 (롱 +20% / 숏 -20%, 수수료 10bp + 국가별 거래세): Sharpe 0.661 / IR 0.657 / CAGR +0.68% / MDD -1.99% / Calmar 0.342 / 실현 TE 1.03% / 턴오버 1.6x** (OOS 2018-06~2026-08, 99개월; 2026-09-16 Tier 1 look-ahead 제거 후 — 구 0.734 는 미래 월에 롱/숏이 비는 팩터를 미리 제외하던 편향 포함, [research.md §6.2.2](research.md)). TE 는 시장중립 오버레이라 액티브수익=오버레이수익이므로 월 순수익 표준편차의 연환산 (실현/ex-post — Bloomberg ex-ante 추정치와는 다름)
+- ⚠ **고회전 구성의 비용 회계**: factor-level 백테스트의 `backtest_cost_multiplier=0.6`은 저회전 전용 근사 — 월간 리밸에서는 실비용이 과소계상된다 (실측 netting 최대 1.8배). **정본 성과 판단은 배포 기준(종목단 재구성 + 목표 노출 고정) 실측**: `backtest` 실행이 `stock_level_series_{기준일}.csv` 로 함께 산출한다. **현 채택 스택 (롱 +20% / 숏 -20%, 수수료 10bp + 국가별 거래세): Sharpe 0.661 / IR 0.657 / CAGR +0.68% / MDD -1.99% / Calmar 0.342 / 실현 TE 1.03% / 턴오버 1.6x** (OOS 2018-06~2026-08, 99개월; 2026-09-16 Tier 1 look-ahead 제거 후 — 구 0.734 는 미래 월에 롱/숏이 비는 팩터를 미리 제외하던 편향 포함, [research.md §6.2.2](research.md)). TE 는 시장중립 오버레이라 액티브수익=오버레이수익이므로 월 순수익 표준편차의 연환산 (실현/ex-post — bbg ex-ante 추정치와는 다름)
 - **과적합 진단 5지표**: Funnel Value-Add, OOS Percentile Tracking, Strict Jaccard, IS-OOS Rank Correlation, Deflation Ratio
 
 > **상세**: 각 Tier의 look-ahead bias 방지 규칙, 5지표 해석 임계값, 판정 패턴(CONSTRAINT_DRAG/FILTER_OVERFIT) 설명은 [research.md §6](research.md) 참조.
 
 ### 용어: MP vs Constrained EW
-- **MP (Model Portfolio)** — 프로덕션 산출물 (Bloomberg Optimizer 입력 CSV). 역할 이름.
+- **MP (Model Portfolio)** — 프로덕션 산출물 (bbg Optimizer 입력 CSV). 역할 이름.
 - **Constrained EW** — MP를 만드는 **구성 방식**의 관례적 라벨 (선정 팩터 가중 + `style_cap` 재분배 — MXWO 20% / MXCN1A 25%). MXWO에선 Top-60 고정 + **ERC(수축 0.2) + TS모멘텀 틸트** 가중 (EW 1/N → ERW 1/σ → ERC로 진화)이나, 백테스트 리포트/CSV 컬럼의 "CEW" 라벨은 호환을 위해 유지.
 - 백테스트 진단 리포트는 구성 방식을 명시하기 위해 "Constrained EW" 라벨을 사용. 프로덕션 CLI/파일명/CSV 컬럼은 "MP" 유지.
 - 과거 MP는 Monte Carlo 최적화로 구성됐으나 커밋 `8dfb64e`에서 제거됨.
@@ -323,7 +323,7 @@ result.to_csv("output/{BENCHMARK}/wf.csv")      # 결과 저장
 
 ### MTD 손익 모니터링 (`research/mtd_pnl.py`, 2026-09-17)
 
-DB 에 일별 가격이 없으므로 Bloomberg Desktop API(터미널 로그인 PC) 의 총수익지수(`TOT_RETURN_INDEX_GROSS_DVDS`,
+DB 에 일별 가격이 없으므로 bbg Desktop API(터미널 로그인 PC) 의 총수익지수(`TOT_RETURN_INDEX_GROSS_DVDS`,
 배당 재투자 포함)로 최신 MP 북의 월중 손익을 본다. 전월말 -> 기준일(기본 어제), 종목별 로컬 통화 / USD 환산 수익률과
 `ls_weight` 기여를 산출한다. (yfinance 는 1,200 종목 x 반복 실행에서 rate limit 으로 기각, 2026-09-17)
 
@@ -333,23 +333,23 @@ python research/mtd_pnl.py 2026-09-15   # 임의 기준일
 ```
 
 - 식별자 매핑: `data/{BENCHMARK}/figi_map.csv` (ISIN -> 본상장 composite FIGI). 없는 ISIN 은 OpenFIGI 로 채움
-  (`.env` 에 `OPENFIGI_API_KEY` 를 두면 1,200건이 수 초). Bloomberg 조회는 `/bbgid/<FIGI>` — ISIN 을 직접 주면 미국 OTC
+  (`.env` 에 `OPENFIGI_API_KEY` 를 두면 1,200건이 수 초). bbg 조회는 `/bbgid/<FIGI>` — ISIN 을 직접 주면 미국 OTC
   라인으로 풀린다. 손으로 고친 FIGI 는 그대로 존중된다
 - 출력: `output/{BENCHMARK}/<MP 기준일>/mtd_pnl_<asof>.csv` + 콘솔 요약 (롱/숏/전체의 local vs USD vs FX 효과, BM 은 `MXWO Index`)
 - 가격 소스는 `bdh()` 한 함수로 격리 — DB 에 일별 테이블이 생기면 이 함수만 교체
-- 설치: `blpapi` 는 Bloomberg 전용 인덱스 (Pipfile `[[source]] bloomberg`)
+- 설치: `blpapi` 는 bbg 전용 인덱스 (Pipfile `[[source]] bbg`)
 
 **일별 대시보드 (`research/mtd_dashboard.py`)** — 실제 리밸런싱 타이밍을 반영한 실현 손익.
 
 ```bash
-python research/mtd_dashboard.py              # 어제까지 (캐시에 없는 날짜만 Bloomberg 조회)
+python research/mtd_dashboard.py              # 어제까지 (캐시에 없는 날짜만 bbg 조회)
 python research/mtd_dashboard.py 2026-09-15   # 캐시 안의 어느 날짜든 기준일로
 ```
 
 - 일별 수익률 캐시 `data/{BENCHMARK}/daily_ret/YYYY-MM.parquet` — 월 안의 모든 거래일을 한 번 받아 두고 증분만 추가
 - 리밸런싱 로그 `data/{BENCHMARK}/rebalance_log.csv` — 규칙(월초 3번째 거래일)으로 자동 기입, `actual_date` 를 손으로 고치면 "수동 지정" 으로 표시. 실제 일자는 매달 남긴다
 - **실현** = 전월말~리밸런싱일 종가는 전월 북, 이후는 당월 북 (종가 교대). **모델** = 당월 북을 전월말부터 (백테스트 가정). 둘의 차이 = 타이밍 효과
-- 출력 `output/{BENCHMARK}/<MP 기준일>/mtd_dashboard.html` — 리서치 리포트 톤(라이트 기본, 다크 선택), 탭 3개. 헤더 아래 **공통 설정 바**(기준일·실현/모델·리밸런싱일·전월 규모 맞춤)가 MTD 와 주간 리포트에 함께 적용된다. **MTD**: 실현 수익률 + 모델/타이밍/구간 KPI, 누적 곡선, 스타일 표(배분·배포 롱/숏·기여 인라인 막대), 팩터 상·하위 10(배포 gross순/기여순 토글; MTD·1W = 실현 기여, 1M/3M/YTD/1Y = 현재 배포 비중으로 그 기간 보유했을 때의 기여) + MP 합계 한 줄, 섹터, 종목 상·하위 8. 국가·롱/숏은 접힘. **현재 포트**: 당월 북(캡 후)의 스타일 배분, 섹터·종목 스타일 분해, 팩터 비중 변화·순위. **종목 기여**: Bloomberg PORT 식 종목별 CTR 표 (전 종목, 검색·열 정렬·롱/숏 필터). 평균 비중(기간 일별 보유 비중 평균, 드리프트·교대 반영)·배포 비중·기간 수익률(USD)·기여·스타일 8열, 합계(순/gross). 롱숏 오버레이라 BM=0, MP=Active. **종목 기여 (임시)**: `data/{BENCHMARK}/bm_universe.csv`(Bloomberg PORT 내보내기의 BM 구성종목, 소형주 제외)가 있으면 MP 를 그 유니버스로 제한하고 롱·숏 각각을 원래 목표(gross/2)로 비례 조정한 버전 — 제외 종목 수·gross, 롱/숏 배율을 탭 머리에 표시 (MXCN1A 2026-09: 133종목 제외, 롱 x1.33 숏 x1.37, MTD 2.9bp → 6.8bp, Bloomberg Active 9.6bp). **주간 리포트**: 인쇄 전용(A4, 이 탭만 출력). 한 장 PDF 는 `research/mtd_onepager.py [날짜] [--bbg 9.60]` — 스타일별 비중/기여 + 팩터 기여 상하위 10 차트 (`output/{BENCHMARK}/<MP 기준일>/mtd_pdf/mtd_performance_analysis_{KIC|BOK}[_bmuniv]_<asof>[_grossNN].pdf`; `bm_universe.csv` 가 있는 유니버스(MXCN1A)는 BM 제한본 `_bmuniv`, MXWO 는 원 MP 기준). **모든 비중·수익률은 배포 기준** (2026-09-21): 스타일·팩터 비중은 배포 롱/숏 gross(섹터 숏캡 후), 1M~1Y 는 현재 배포 한쪽 다리 크기((롱+|숏|)/2, 캡 후) x 팩터 L/S 월수익률 복리 = '현재 비중으로 그 기간 보유 시 기여'. 예외는 현재 포트 탭의 '스타일 배분 비율' 차트(캡 25% 규제 요건용, 비율 표시). 수익률·기여는 % 소수점 4자리. CDN(Tailwind·Pretendard·Plotly) 사용이라 인터넷 필요
+- 출력 `output/{BENCHMARK}/<MP 기준일>/mtd_dashboard.html` — 리서치 리포트 톤(라이트 기본, 다크 선택), 탭 3개. 헤더 아래 **공통 설정 바**(기준일·실현/모델·리밸런싱일·전월 규모 맞춤)가 MTD 와 주간 리포트에 함께 적용된다. **MTD**: 실현 수익률 + 모델/타이밍/구간 KPI, 누적 곡선, 스타일 표(배분·배포 롱/숏·기여 인라인 막대), 팩터 상·하위 10(배포 gross순/기여순 토글; MTD·1W = 실현 기여, 1M/3M/YTD/1Y = 현재 배포 비중으로 그 기간 보유했을 때의 기여) + MP 합계 한 줄, 섹터, 종목 상·하위 8. 국가·롱/숏은 접힘. **현재 포트**: 당월 북(캡 후)의 스타일 배분, 섹터·종목 스타일 분해, 팩터 비중 변화·순위. **종목 기여**: bbg PORT 식 종목별 CTR 표 (전 종목, 검색·열 정렬·롱/숏 필터). 평균 비중(기간 일별 보유 비중 평균, 드리프트·교대 반영)·배포 비중·기간 수익률(USD)·기여·스타일 8열, 합계(순/gross). 롱숏 오버레이라 BM=0, MP=Active. **종목 기여 (임시)**: `data/{BENCHMARK}/bm_universe.csv`(bbg PORT 내보내기의 BM 구성종목, 소형주 제외)가 있으면 MP 를 그 유니버스로 제한하고 롱·숏 각각을 원래 목표(gross/2)로 비례 조정한 버전 — 제외 종목 수·gross, 롱/숏 배율을 탭 머리에 표시 (MXCN1A 2026-09: 133종목 제외, 롱 x1.33 숏 x1.37, MTD 2.9bp → 6.8bp, bbg Active 9.6bp). **주간 리포트**: 인쇄 전용(A4, 이 탭만 출력). 한 장 PDF 는 `research/mtd_onepager.py [날짜] [--bbg 9.60]` — 스타일별 비중/기여 + 팩터 기여 상하위 10 차트 (`output/{BENCHMARK}/<MP 기준일>/mtd_pdf/mtd_performance_analysis_{KIC|BOK}[_bmuniv]_<asof>[_grossNN].pdf`; `bm_universe.csv` 가 있는 유니버스(MXCN1A)는 BM 제한본 `_bmuniv`, MXWO 는 원 MP 기준). **모든 비중·수익률은 배포 기준** (2026-09-21): 스타일·팩터 비중은 배포 롱/숏 gross(섹터 숏캡 후), 1M~1Y 는 현재 배포 한쪽 다리 크기((롱+|숏|)/2, 캡 후) x 팩터 L/S 월수익률 복리 = '현재 비중으로 그 기간 보유 시 기여'. 예외는 현재 포트 탭의 '스타일 배분 비율' 차트(캡 25% 규제 요건용, 비율 표시). 수익률·기여는 % 소수점 4자리. CDN(Tailwind·Pretendard·Plotly) 사용이라 인터넷 필요
 
 ### 시각화 대시보드 사용법 (viz)
 백테스트 내역과 현재 포트(배팅)를 단일 인터랙티브 HTML 리포트로 본다.

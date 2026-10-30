@@ -86,7 +86,7 @@ DETAIL = {
     "factor_selection": "rank_score(기본 tstat) 기준 Top-N 팩터 선정. 클러스터 dedup(상관 기반 중복 제거) + 선정 히스테리시스(챌린저가 margin 이상 이겨야 교체)로 turnover 억제. mp·백테스트 공통.",
     "optimization": "style_cap(기본 25%) 제약 하 동일가중(CEW) 재분배. 1/N에서 시작해 캡 초과 스타일을 반복 축소·정규화. 학습 가중치 없는 결정론적 제약.",
     "weight_history": "운영 mp의 월별 팩터/스타일 가중치 이력 저장(output/mp_weight_history/). 전월대비 delta 분석용. test 모드 skip.",
-    "model_portfolio": "MP 파이프라인 오케스트레이터(코어). 데이터로딩→5분위→필터/라벨→롱숏수익→Top-N 선정→style_cap 가중치→종목별 mp_ls_weight 집계→CSV(Bloomberg 입력)까지 run()에서 순차 실행. 백테스트도 이 모듈을 래핑. OUTPUT_DIR/DATA_DIR 상수 보유.",
+    "model_portfolio": "MP 파이프라인 오케스트레이터(코어). 데이터로딩→5분위→필터/라벨→롱숏수익→Top-N 선정→style_cap 가중치→종목별 mp_ls_weight 집계→CSV(bbg 입력)까지 run()에서 순차 실행. 백테스트도 이 모듈을 래핑. OUTPUT_DIR/DATA_DIR 상수 보유.",
     "walk_forward_engine": "Walk-Forward(Expanding) 백테스트 엔진. 파이프라인을 한 줄도 수정 않고 감싸며 Tier1(6M 규칙학습)·Tier2(3M 선정·가중치)·Tier3(월 OOS 조회) 계층 리밸런싱. OOS look-ahead 방지 위해 IS 전용 규칙 매핑. 비용 = 종목비용 × backtest_cost_multiplier(기본 60bp).",
     "data_slicer": "백테스트 IS/OOS 날짜 슬라이싱 유틸. 누적창(expanding) IS 범위를 날짜 필터로 제어.",
     "result_stitcher": "OOS 월별 결과를 접합해 WalkForwardResult 구성(누적수익·가중치이력·팩터수익이력·리밸로그). CAGR/MDD/Sharpe/Calmar 등 성과지표 계산.",

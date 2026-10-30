@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QMind MTD 리포트</title>
-<meta name="description" content="MP 오버레이의 월중 실현 손익과 현재 포트 (Bloomberg 총수익 기준)">
+<meta name="description" content="MP 오버레이의 월중 실현 손익과 현재 포트 (bbg 총수익 기준)">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css">
 <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
@@ -175,7 +175,7 @@ tailwind.config = { theme: { extend: {
   </section>
 </div>
 
-<!-- ═══════════ 종목 기여 (Bloomberg PORT 스타일: 롱숏 오버레이라 BM=0, MP = Active) ═══════════ -->
+<!-- ═══════════ 종목 기여 (bbg PORT 스타일: 롱숏 오버레이라 BM=0, MP = Active) ═══════════ -->
 <div id="tab-stocks" class="hidden space-y-6">
   <section>
     <p class="text-xs uppercase tracking-[.18em] text-muted">Stock contribution · 설정 바 기간 · 배포 기준 · USD</p>
@@ -199,7 +199,7 @@ tailwind.config = { theme: { extend: {
     <p class="text-xs uppercase tracking-[.18em] text-muted">Stock contribution · 실제 BM 유니버스 제한 (임시) · 설정 바 기간 · USD</p>
     <div class="mt-3 flex flex-wrap items-baseline gap-x-8 gap-y-2"><span id="sb-total" class="text-3xl font-semibold tracking-tight num">--</span><span id="sb-sub" class="text-sm text-muted2"></span></div>
     <div id="sb-adj" class="mt-3 text-xs text-muted2 space-y-1"></div>
-    <p class="mt-2 text-xs text-muted">MP 에서 Bloomberg BM(소형주 제외) 밖 종목을 뺀 뒤, 롱·숏 각각을 원래 목표 크기(gross/2)로 비례 조정한 비중. 유니버스는 data/{universe}/bm_universe.csv (Bloomberg PORT 내보내기에서 추출). 나머지 정의는 종목 기여 탭과 동일.</p>
+    <p class="mt-2 text-xs text-muted">MP 에서 bbg BM(소형주 제외) 밖 종목을 뺀 뒤, 롱·숏 각각을 원래 목표 크기(gross/2)로 비례 조정한 비중. 유니버스는 data/{universe}/bm_universe.csv (bbg PORT 내보내기에서 추출). 나머지 정의는 종목 기여 탭과 동일.</p>
   </section>
   <div class="no-print flex flex-wrap items-center gap-4 text-sm">
     <input id="sb-q" type="search" placeholder="티커 · 종목명 · 섹터 · 국가 검색" class="w-72 rounded-md border border-line bg-card px-3 py-1.5 text-sm">
@@ -230,11 +230,11 @@ tailwind.config = { theme: { extend: {
   <div class="avoid"><h2 class="sec">팩터 상·하위 10<small id="r-fac-sub"></small></h2>
     <table class="mt-2"><thead><tr><th>#</th><th>팩터</th><th>스타일</th><th>비중 (롱숏 평균)</th><th>MTD</th><th>1W</th><th>1M</th><th>3M</th><th>YTD</th><th>1Y</th></tr></thead>
       <tbody id="r-fac-top"></tbody><tbody><tr><td colspan="10" class="l pt-3 pb-1 text-xs text-muted border-0">하위 10</td></tr></tbody><tbody id="r-fac-bottom"></tbody></table></div>
-  <p class="text-xs text-muted">수익률: Bloomberg 일별 총수익률(배당 재투자, USD). 실현 = 리밸런싱일 종가에 전월 북 → 당월 북 교대. 비중은 배포 규모 기준, 기여는 NAV 대비. 1M~1Y 는 현재 배포 비중(캡 후 한쪽 다리 크기)으로 그 기간 보유했을 때의 기여 = 팩터 L/S 월수익률 복리 x 현재 크기.</p>
+  <p class="text-xs text-muted">수익률: bbg 일별 총수익률(배당 재투자, USD). 실현 = 리밸런싱일 종가에 전월 북 → 당월 북 교대. 비중은 배포 규모 기준, 기여는 NAV 대비. 1M~1Y 는 현재 배포 비중(캡 후 한쪽 다리 크기)으로 그 기간 보유했을 때의 기여 = 팩터 L/S 월수익률 복리 x 현재 크기.</p>
 </div>
 
 <footer class="no-print text-xs text-muted rule pt-6 mt-16 pb-10">
-  수익률은 Bloomberg DAY_TO_DAY_TOT_RETURN_GROSS_DVDS(배당 재투자, USD 환산). 북 가치는 buy-and-hold. 실현 = 전월말~리밸런싱일 종가는 전월 북, 이후 당월 북. 모델 = 당월 북을 전월말부터 (백테스트 가정). 스타일·팩터 분해는 종목별 섹터 숏캡 비율을 팩터 비중에 배분한 값.
+  수익률은 bbg DAY_TO_DAY_TOT_RETURN_GROSS_DVDS(배당 재투자, USD 환산). 북 가치는 buy-and-hold. 실현 = 전월말~리밸런싱일 종가는 전월 북, 이후 당월 북. 모델 = 당월 북을 전월말부터 (백테스트 가정). 스타일·팩터 분해는 종목별 섹터 숏캡 비율을 팩터 비중에 배분한 값.
 </footer>
 </main>
 

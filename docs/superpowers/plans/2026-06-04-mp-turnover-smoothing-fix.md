@@ -504,7 +504,7 @@ from service.pipeline.weight_history import (
                 logger.info("EMA blending applied (alpha=%.2f), memory=%d / deployed=%d factors",
                             alpha, len(memory), len(deployed))
 
-            # 배포: 현재 선정분만 100% 정규화 -> Bloomberg 입력물 (gross 1.0)
+            # 배포: 현재 선정분만 100% 정규화 -> bbg 입력물 (gross 1.0)
             weights_tbl["fitted_weight"] = weights_tbl["factor"].map(deployed).fillna(0.0)
             sim_result = (sim_result[0], weights_tbl)
 

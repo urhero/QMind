@@ -6,7 +6,7 @@
 --gross 는 배포 gross 를 가정값으로 재스케일 (예: 0.19 = 롱/숏 각 9.5%). 파일명에 _gross19 접미사
 출력:  output/{BM}/<MP 기준일>/mtd_pdf/mtd_performance_analysis_{KIC|BOK}[_bmuniv]_<asof>[_grossNN].pdf (+ .png 미리보기)
 전제:  data/{BM}/bm_universe.csv 가 있으면 BM 유니버스 제한본(_bmuniv), 없으면(MXWO) 원 MP 기준. 일별 캐시는 mtd_dashboard 와 공유.
---bbg 는 Bloomberg PORT Active CTR(bp) 를 머리글에 병기.
+--bbg 는 bbg PORT Active CTR(bp) 를 머리글에 병기.
 """
 import sys
 from pathlib import Path
@@ -262,7 +262,7 @@ contrib_chart(ax2, [f"{f_} ({STYLE_ABBR.get(r['style'], '?')})\n{fname.get(f_, '
               [scol_(x) for x in sel["style"]], split_after=n_top, fs=FS, vfs=FS, marks=[scol_(x) for x in sel["style"]])
 right_notes(ax2, [wfmt(FW.get(f_, 0.0), r.long, r.short) for f_, r in sel.iterrows()], "비중 (롱숏 평균)", fs=FS)
 
-# ④ 종목 기여 상하위 10 (아래 왼쪽) — 페이지 합계와 같은 이어붙이기·같은 비중, 라벨 = Bloomberg 티커 + 짧은 이름, 막대 색 = 롱/숏
+# ④ 종목 기여 상하위 10 (아래 왼쪽) — 페이지 합계와 같은 이어붙이기·같은 비중, 라벨 = bbg 티커 + 짧은 이름, 막대 색 = 롱/숏
 def _side(s_):
     return s_["wb_cur"] if s_["wb_cur"] else s_["wb_prev"]   # 전월 북에만 있던 종목은 전월 비중으로
 def _tk(s_):

@@ -64,7 +64,7 @@ def build_factor_weight_frames(
         df["name"] = f"{PARAM['benchmark']}_{style_name}"
         df["factor"] = factor_abbr
         df["count"] = count_per_group
-        # Bloomberg 티커 포맷은 중국 A주(MXCN1A) 전용. 그 외 유니버스(MXWO 등)는
+        # bbg 티커 포맷은 중국 A주(MXCN1A) 전용. 그 외 유니버스(MXWO 등)는
         # 다국가 로컬 티커라 그대로 두고 ISIN을 식별자로 사용한다.
         if PARAM["benchmark"] == "MXCN1A":
             df["ticker"] = df["ticker"].astype(str).str.zfill(6).add(" CH Equity")
@@ -211,7 +211,7 @@ def calculate_style_weights(
 
 
 # MP 배포 배수 (2026-08-19 도입): 최종 MP 북을 실제 포트폴리오에 적용할 때 곱하는
-# 배수를 산출물에 미리 반영한다 (Bloomberg ex-ante TE 확인을 배수 적용 상태로 하기 위함).
+# 배수를 산출물에 미리 반영한다 (bbg ex-ante TE 확인을 배수 적용 상태로 하기 위함).
 # data/{BENCHMARK}/mp_multiplier.csv 는 (effective_date, multiplier) 이력 — 해당 시점 이후 다음
 # 변경 전까지 유효한 계단식 값. 파일/해당 행이 없으면 1.0 (미적용).
 MULTIPLIER_COLS = ("mp_ls_weight", "ls_weight", "style_ls_weight")

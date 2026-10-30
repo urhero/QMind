@@ -63,7 +63,7 @@ Constrained EW의 월간 노출을 t-1까지의 전략 실현변동성에 반비
 
 ## 최종 채택 형태 (2026-07-21 확정)
 
-운용 현실: Bloomberg Target Portfolio = BM + MP x multiplier 이고, 운용자가 multiplier로
+운용 현실: bbg Target Portfolio = BM + MP x multiplier 이고, 운용자가 multiplier로
 ex-ante TE ~0.65%를 수동 조절 중 (그 자체가 ex-ante vol targeting). 자동 가중치
 스케일링을 얹으면 이중 조절 -> **자동화 미채택**, 대신 실현변동성 신호는 ex-ante
 리스크 모델과 상호보완(팩터 크래시 국면의 실현 정보)이므로 **viz 대시보드 참고

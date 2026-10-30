@@ -59,4 +59,4 @@ CLAUDE.md 검증 절차(before/after diff) 비발동.
 - `output/dashboard_<end_date>.html`.
 - 테스트: 순수 함수 단위 테스트(인라인 DF) + 파일선택/진단파싱(tmp_path) + HTML 생성 스모크.
 - cp949: 콘솔 출력은 ASCII만 (`->`, `-`). 차트 내부 텍스트(plotly)는 무관.
-- Bloomberg `pivoted_total_agg_wgt_*.csv`는 읽지도/건드리지도 않음(별개 파일 출력).
+- bbg `pivoted_total_agg_wgt_*.csv`는 읽지도/건드리지도 않음(별개 파일 출력).

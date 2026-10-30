@@ -7,7 +7,7 @@
 
 구성:
   1. 일별 수익률 캐시  data/{BM}/daily_ret/{YYYY-MM}.parquet  (date, sec, ret_local, ret_usd; %/100)
-     - Bloomberg DAY_TO_DAY_TOT_RETURN_GROSS_DVDS (배당 재투자 포함). 총수익지수 대신 일수익률을 캐시하는 이유:
+     - bbg DAY_TO_DAY_TOT_RETURN_GROSS_DVDS (배당 재투자 포함). 총수익지수 대신 일수익률을 캐시하는 이유:
        총수익지수는 요청 시작일에 리베이스돼 증분 조회가 깨진다. 일수익률은 증분 append 가 안전.
      - 캐시에 없는 (종목, 날짜)만 조회 -> 매일 실행이 수 초.
   2. 리밸런싱 로그  data/{BM}/rebalance_log.csv  (month, rule_date, actual_date, source, note)
@@ -51,17 +51,17 @@ FACTOR_STYLE: dict[str, str] = {}  # load_book 이 채움 (팩터 -> 스타일)
 FACTOR_WEIGHT: dict[str, dict[str, float]] = {}  # load_book 이 채움 (북 날짜 -> {팩터: factor_weight, 캡 후 배분 합~1})
 NAMES_PATH = UNIVERSE_DATA_DIR / "security_names.csv"
 INDUSTRY_PATH = UNIVERSE_DATA_DIR / "security_industry.csv"   # GICS 산업 그룹 (DB 에는 섹터만 있음)
-SHORT_PATH = UNIVERSE_DATA_DIR / "security_short_names.csv"  # Bloomberg SHORT_NAME (한 장 PDF 종목 라벨)
-TICKER_PATH = UNIVERSE_DATA_DIR / "security_tickers.csv"     # Bloomberg TICKER_AND_EXCH_CODE (예: "SLB US", "600519 CH")
+SHORT_PATH = UNIVERSE_DATA_DIR / "security_short_names.csv"  # bbg SHORT_NAME (한 장 PDF 종목 라벨)
+TICKER_PATH = UNIVERSE_DATA_DIR / "security_tickers.csv"     # bbg TICKER_AND_EXCH_CODE (예: "SLB US", "600519 CH")
 
 
 def _ref_cache(secs: list[str], field: str, path: Path, col: str) -> dict[str, str]:
-    """sec -> Bloomberg 참조값. 캐시(path)에 없는 것만 bdp 조회해 추가 저장."""
+    """sec -> bbg 참조값. 캐시(path)에 없는 것만 bdp 조회해 추가 저장."""
     cache = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["sec", col])
     have = dict(zip(cache["sec"], cache[col]))
     missing = [x for x in secs if x not in have]
     if missing:
-        print(f"[{col}] Bloomberg {field} for {len(missing)} securities")
+        print(f"[{col}] bbg {field} for {len(missing)} securities")
         got = bdp(missing, [field])[field].dropna()
         have.update(got.to_dict())
         pd.DataFrame({"sec": list(have), col: list(have.values())}).to_csv(path, index=False)
@@ -79,12 +79,12 @@ def security_industry(secs: list[str]) -> dict[str, str]:
 
 
 def security_short_names(secs: list[str]) -> dict[str, str]:
-    """sec -> Bloomberg 짧은 이름 (한 장 PDF 종목 기여 라벨)."""
+    """sec -> bbg 짧은 이름 (한 장 PDF 종목 기여 라벨)."""
     return _ref_cache(secs, "SHORT_NAME", SHORT_PATH, "short_name")
 
 
 def security_tickers(secs: list[str]) -> dict[str, str]:
-    """sec -> 거래소 코드가 붙은 Bloomberg 티커. DB 티커는 MXWO 에 거래소가 없고 MXCN1A 는 ' Equity' 형식이라 표시용으로 따로 받는다."""
+    """sec -> 거래소 코드가 붙은 bbg 티커. DB 티커는 MXWO 에 거래소가 없고 MXCN1A 는 ' Equity' 형식이라 표시용으로 따로 받는다."""
     return _ref_cache(secs, "TICKER_AND_EXCH_CODE", TICKER_PATH, "bbg_ticker")
 
 
@@ -133,7 +133,7 @@ def factor_horizons(book_dir: Path, factors: list[str]) -> tuple[dict, str | Non
     return out, str(last.date())
 
 
-BM_UNIV_PATH = UNIVERSE_DATA_DIR / "bm_universe.csv"  # 실제 BM 구성종목 (Bloomberg PORT 내보내기에서 추출, 소형주 제외)
+BM_UNIV_PATH = UNIVERSE_DATA_DIR / "bm_universe.csv"  # 실제 BM 구성종목 (bbg PORT 내보내기에서 추출, 소형주 제외)
 
 
 def bm_restrict(book: pd.DataFrame) -> tuple[pd.Series, pd.Series, dict]:

@@ -563,7 +563,7 @@ def deploy_exposure_fig(df: pd.DataFrame) -> go.Figure:
         line=dict(color="#3b82f6", width=2),
         hovertemplate="%{x|%Y-%m}<br>gross %{y:.1%}<extra></extra>",
     ))
-    # Gross Active Risk 목표 궤적 (계단식) — Bloomberg ex-ante TE 를 일정하게
+    # Gross Active Risk 목표 궤적 (계단식) — bbg ex-ante TE 를 일정하게
     # 유지하기 위한 Active Risk 조정 이력을 그대로 보여준다 (2026-08-21).
     if "target_gross" in df.columns and df["target_gross"].notna().any():
         fig.add_trace(go.Scatter(

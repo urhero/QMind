@@ -462,14 +462,14 @@ def _backtest_stats_card(curves) -> str:
 
 
 def _vol_regime_note(summary: dict) -> str:
-    """변동성 국면 요약 텍스트 - Bloomberg multiplier/TE 타깃 정성 참고용 설명."""
+    """변동성 국면 요약 텍스트 - bbg multiplier/TE 타깃 정성 참고용 설명."""
     text = (
         f'현재 실현변동성 {summary["realized_vol"]:.1%} '
         f'(역대 {summary["percentile"]:.0%} 백분위, '
         f'레인지 {summary["min_vol"]:.1%}~{summary["max_vol"]:.1%}), '
         f'중위 {summary["median_vol"]:.1%}, '
         f'참고 배수 k={summary["k"]:.2f} (cap {summary["k_cap"]:.1f}). '
-        'Bloomberg multiplier/TE 타깃 정할 때 정성 참고용 - 예: 평소 TE 타깃 x k'
+        'bbg multiplier/TE 타깃 정할 때 정성 참고용 - 예: 평소 TE 타깃 x k'
     )
     return escape(text)
 

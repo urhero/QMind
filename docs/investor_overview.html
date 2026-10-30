@@ -182,7 +182,7 @@
         </div>
         <div class="mt-6 pt-5 flex items-center gap-2 text-sm text-muted" style="border-top:1px solid var(--hairline)">
           <iconify-icon icon="solar:check-circle-bold" class="text-up" width="16"></iconify-icon>
-          최종 산출물은 Bloomberg Optimizer로 집행
+          최종 산출물은 bbg Optimizer로 집행
         </div>
       </div>
     </div>
@@ -256,7 +256,7 @@
         </div>
         <div class="flex items-center gap-4">
           <div class="funnel-bar h-14 rounded-lg flex items-center px-5 font-semibold text-onaccent" data-w="26%" style="width:0%;background:var(--gold)">종목별 MP 비중</div>
-          <span class="text-sm text-muted shrink-0 hidden sm:block keep">CSV 출력 → Bloomberg Optimizer</span>
+          <span class="text-sm text-muted shrink-0 hidden sm:block keep">CSV 출력 → bbg Optimizer</span>
         </div>
       </div>
     </div>
@@ -336,7 +336,7 @@
             <h3 class="text-lg font-bold text-ink keep flex items-center gap-2"><iconify-icon icon="solar:export-bold" class="text-muted" width="20"></iconify-icon> MP 구성 + 집행</h3>
             <p class="mt-2 text-sm leading-relaxed keep" style="color:var(--body)">
               팩터 비중을 종목 수준으로 전개하여 종목별 순비중(오버/언더웨이트)을 산출하고, 이를 <span class="font-semibold text-ink">벤치마크 비중에 합산</span>해 최종 Model Portfolio(MP)를 구성합니다.
-              MP는 <span class="font-semibold text-ink">Bloomberg Optimizer</span>에 입력되어 Tracking Error 점검 후 실제 매매로 집행됩니다.
+              MP는 <span class="font-semibold text-ink">bbg Optimizer</span>에 입력되어 Tracking Error 점검 후 실제 매매로 집행됩니다.
             </p>
           </div>
         </div>
@@ -625,7 +625,7 @@
       { q: '왜 중국 주식인가요?', a: '본 전략의 투자 유니버스는 중국 주식(MSCI China A 벤치마크)입니다. 종목 수가 많고 분산이 가능한 시장에서 팩터 신호를 횡단면으로 비교·선별합니다.' },
       { q: '액티브인가요, 패시브인가요?', a: '규칙 기반 액티브(Systematic Active)입니다. 벤치마크를 기계적으로 복제하지 않고 팩터로 종목을 선별하되, 그 선별 규칙 자체는 사전에 정의되어 사람의 재량 개입을 최소화합니다.' },
       { q: '단일 스마트베타와 무엇이 다른가요?', a: '하나의 팩터에 집중하는 스마트베타와 달리, 여러 스타일의 다수 팩터를 통합하고 스타일별 25% 상한과 중복 제거를 적용합니다. 특정 팩터가 부진해도 전체가 흔들리지 않도록 분산합니다.' },
-      { q: '롱-숏 전략인가요?', a: '팩터의 효과는 롱-숏 스프레드로 평가하며, 종목 단위로는 순비중(오버/언더웨이트)을 산출합니다. 실제 매매에서의 롱/숏 허용 여부와 최종 제약은 Bloomberg Optimizer 집행 단계에서 결정됩니다.' },
+      { q: '롱-숏 전략인가요?', a: '팩터의 효과는 롱-숏 스프레드로 평가하며, 종목 단위로는 순비중(오버/언더웨이트)을 산출합니다. 실제 매매에서의 롱/숏 허용 여부와 최종 제약은 bbg Optimizer 집행 단계에서 결정됩니다.' },
     ]},
     { group: '프로세스', items: [
       { q: '200개가 넘는 팩터를 어떻게 추려내나요?', a: '거래비용 차감 후 통계적 유의성(t-stat)으로 줄을 세우고, 서로 비슷하게 움직이는 팩터는 상관관계 기반 클러스터링(18개 클러스터)으로 묶습니다. 각 클러스터의 대표(최상위)는 반드시 남기고 나머지는 품질이 전체 중위 이상인 것만 통과시켜, 고정 개수 없이 핵심 팩터(약 30개)를 선별합니다.' },
@@ -645,7 +645,7 @@
       { q: '거래비용은 얼마로 가정하나요?', a: '운영 기준 30bp(중국 시장 실거래 비용 추정치)를 적용합니다. 백테스트에서는 팩터 간 비중 변경 비용을 보수적으로 반영하기 위해 그 2배(60bp)를 적용합니다.' },
       { q: '회전율(턴오버)은 어느 수준인가요?', a: '선정 히스테리시스를 통해 비용 인지 기준에서 턴오버를 약 64% 낮췄습니다. 필요 시 월 최대 변동폭을 제한하는 점진적 스무딩도 옵션으로 적용할 수 있습니다.' },
       { q: '얼마나 자주 리밸런싱하나요?', a: '운영 모델은 매월 비중을 산출합니다. 검증(백테스트)에서는 규칙 학습 6개월, 팩터 선정 3개월, 성과 기록 매월의 계층 구조를 사용합니다.' },
-      { q: '실제 매매는 어떻게 집행되나요?', a: '모델이 산출한 종목별 비중 CSV가 Bloomberg Optimizer에 입력됩니다. 여기서 Tracking Error와 제약 충족 여부를 점검한 뒤 실제 주문으로 집행합니다.' },
+      { q: '실제 매매는 어떻게 집행되나요?', a: '모델이 산출한 종목별 비중 CSV가 bbg Optimizer에 입력됩니다. 여기서 Tracking Error와 제약 충족 여부를 점검한 뒤 실제 주문으로 집행합니다.' },
       { q: '운영 비중은 모델 그대로인가요?', a: '모델은 후보 팩터와 기준 비중(동일가중 + 스타일 캡)을 제시합니다. 운영 포트폴리오의 최종 비중은 이 산출을 입력으로 매니저가 검토·확정합니다.' },
     ]},
     { group: '성과 · 검증', items: [
@@ -668,7 +668,7 @@
     ['스타일 캡', '한 스타일의 합산 비중 상한(25%). 집중 위험을 통제합니다.'],
     ['Walk-Forward', '학습 구간 규칙으로 학습에 쓰지 않은 기간의 성과를 측정하는 검증 방식.'],
     ['OOS (Out-of-Sample)', '모델 학습에 사용하지 않은 기간. 진짜 실력을 가늠하는 잣대입니다.'],
-    ['Tracking Error', '벤치마크 대비 수익률 괴리의 변동성. Bloomberg 집행 단계에서 점검합니다.'],
+    ['Tracking Error', '벤치마크 대비 수익률 괴리의 변동성. bbg 집행 단계에서 점검합니다.'],
   ];
 
   // ---- Render Q&A (답변 항상 표시 + 섹션 전체 접기 토글) ----

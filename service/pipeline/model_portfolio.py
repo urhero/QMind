@@ -365,7 +365,7 @@ class ModelPortfolioPipeline:
         final_weights = pd.concat([weight_raw, agg_w], axis=0, ignore_index=True)
         final_weights = final_weights.sort_values(["style", "factor", "ticker", "gvkeyiid"]).reset_index(drop=True)
         # MP 배포 배수 사전 적용 (2026-08-19): 산출물이 이미 배수 적용 상태로 나가
-        # Bloomberg ex-ante TE 를 그대로 확인할 수 있게 한다. style 집계/피벗보다
+        # bbg ex-ante TE 를 그대로 확인할 수 있게 한다. style 집계/피벗보다
         # 먼저 적용해 세 산출물이 모두 같은 배수를 반영하도록 한다. 성과 백테스트·
         # 실측은 팩터 비중에서 재구성하므로 이 배수의 영향을 받지 않는다.
         mp_rows = final_weights["style"] == "MP"
@@ -424,7 +424,7 @@ class ModelPortfolioPipeline:
         #   weights_factor : 종목 x 팩터 전개 행 + MP 합산 행 (감사 추적)
         #   weights_style  : 스타일별 종목 집계
         #   weights_mp     : style=MP 행만 = 종목별 최종 롱/숏 비중
-        #   weights_pivot  : 피벗 (Bloomberg Optimizer 입력)
+        #   weights_pivot  : 피벗 (bbg Optimizer 입력)
         final_weights.to_csv(out / f"weights_factor_{end_date}{suffix}.csv")
         final_style_weight.to_csv(out / f"weights_style_{end_date}{suffix}.csv")
         final_style_weight.xs("MP", level="style", drop_level=False).to_csv(

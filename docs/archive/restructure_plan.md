@@ -6,7 +6,7 @@
 
 ## 0. 절대 불변 제약 (HARD)
 1. Python 유지. SQL Server 소스 유지(쿼리 텍스트/ORDER BY/ROW_NUMBER 불변).
-2. Bloomberg Optimizer 입력 CSV 계약(파일명/컬럼/포맷/encoding/index 정책) 100% 유지.
+2. bbg Optimizer 입력 CSV 계약(파일명/컬럼/포맷/encoding/index 정책) 100% 유지.
 3. 산출 byte-identity: `total_aggregated_weights_*`, `total_aggregated_weights_style_*`, `pivoted_total_agg_wgt_*`, `meta_data.csv`, `walk_forward_results.csv`.
    - 주의: `aggregated_weights_*`(total 접두 없음)는 현재 `model_portfolio.py`가 **생성하지 않는 dead 계약**(output/의 잔재). 검증 대상에서 제외하되 본 문서에 명시.
 

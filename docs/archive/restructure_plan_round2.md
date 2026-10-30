@@ -14,7 +14,7 @@
 ## 0. HARD 제약 (불변)
 
 1. Python 유지 / SQL Server 소스 유지(쿼리·`ORDER BY factorAbbreviation,ddt` 불변).
-2. Bloomberg CSV 계약(파일명/컬럼/포맷/encoding/index 정책) 100% 유지.
+2. bbg CSV 계약(파일명/컬럼/포맷/encoding/index 정책) 100% 유지.
 3. 산출물 byte-identity: `total_aggregated_weights_*`, `*_style_*`, `pivoted_*`, `meta_data.csv`,
    `walk_forward_results.csv`, `overfit_diagnostics.csv`, `walk_forward_weight_history.csv`.
 4. "구조만 재조직" — 수식/도메인 로직/동작 불변. 모듈/인터페이스/의존성만.
@@ -103,7 +103,7 @@
 **권고/항목 검증:**
 - **byte-snapshot 회귀테스트 선행(test CSV 4종 해시 고정)** — **최우선 채택.** 4안 중 유일하게 "리팩터 전에 안전망부터"를 제시. 현 `mp test` diff 게이트를 **해시 고정 단위테스트로 승격**하면 모든 후속 단계가 보호됨.
 - `diagnostics_keys.py` (한국어 Category/Metric 공유상수) — **채택(순수 구조).** 검증: 동일 한국어 리터럴이 **3중 중복** — producer `overfit_diagnostics.py:516/533-541`, consumer `dashboard_data.py:138-151`, +`research/run_cluster_turnover_experiment.py:469-472`. `tests/test_unit/test_overfit_serializer.py`가 이미 "한 글자 바뀌면 viz 파손"을 가드. 상수 추출은 emit 문자열 불변 시 byte-safe.
-- `bloomberg.py` (zfill/CH Equity/MXCN1A 중앙화) — **부분 채택.** ticker 빌드는 `weight_construction.py:64` `str.zfill(6).add(" CH Equity")` **단 1곳**. `MXCN1A_`는 `weight_construction.py:61`·config·파일명에 분산. 단일 지점이라 중앙화 이득 작음; **상수만 추출**(동작 무변경)하되 변환식은 그대로.
+- `bbg.py` (zfill/CH Equity/MXCN1A 중앙화) — **부분 채택.** ticker 빌드는 `weight_construction.py:64` `str.zfill(6).add(" CH Equity")` **단 1곳**. `MXCN1A_`는 `weight_construction.py:61`·config·파일명에 분산. 단일 지점이라 중앙화 이득 작음; **상수만 추출**(동작 무변경)하되 변환식은 그대로.
 - `io/writers.py` 단일 to_csv 게이트 — **배제.** 검증: 출력별 index/encoding이 **제각각**(MP 3종 `index=True` 디폴트 utf-8, meta/walk/overfit `index=False`, overfit만 `utf-8-sig` BOM). 단일 게이트는 인자 누락 시 전파일 회귀(D 자인) + 다양성 흡수가 오히려 복잡. **배제.**
 - `params: PIPELINE_PARAMS frozen dataclass + dict 어댑터` — **배제(동작변경 위험).** 검증: 라이브 패턴 3종 — (a) `dict(PIPELINE_PARAMS)` + `__setitem__` (`main.py:157-158`, `walk_forward_engine.py:324`), (b) `.update()` (`walk_forward_engine.py:327`), (c) **글로벌 in-place 변이** (`research/experiment_base.py:61-65/125-130` `PIPELINE_PARAMS[key]=val` / `.pop()`). frozen은 (c)를 깨고, `test_walk_forward_engine_override.py:25-34`가 `PIPELINE_PARAMS == before` 불변식을 핀. D 자인대로 `with_overrides` 교체 필요 = 호출부 동작/시그니처 변경. **배제.**
 - registry (ranking/weighting 플러그인) — **보류(구조적이나 fallback 계약 리스크).** 검증: `compute_rank_score`(`selection.py:135`)는 unknown method시 **warn+cagr fallback**(test `test_factor_selection.py:156-157`가 핀), `optimize_constrained_weights`(`optimization.py:105`)는 unknown mode시 **ValueError**(test `test_optimize_constrained_weights.py:258`가 핀). registry가 이 두 계약(silent fallback vs raise)을 정확 보존하면 구조적이나, 현재 if/elif 디스패치가 이미 깔끔한 단일 진입점 -> 이득 낮음. **이번 범위 보류.**
@@ -153,7 +153,7 @@
 | 8 | `service/backtest/result_stitcher.py:98` | `reindex(sorted(wh.columns), axis=1)` — weight_history 컬럼 순서 |
 | 9 | **`service/pipeline/model_portfolio.py:263-267`** | **category->object 변환은 load 시점, 모든 groupby/sort 이전 (B 기여)** |
 | 10 | `service/pipeline/universe.py:50-51,93` | `ret_df.loc[ret_df.index[0]]=0.0; sort_index()`, `sort_values("rank_score", ascending=False)` |
-| 11 | `service/pipeline/weight_construction.py:64` | `str.zfill(6).add(" CH Equity")` — Bloomberg ticker (절단 금지, pad만) |
+| 11 | `service/pipeline/weight_construction.py:64` | `str.zfill(6).add(" CH Equity")` — bbg ticker (절단 금지, pad만) |
 | 12 | `service/backtest/overfit_diagnostics.py:546` | `to_csv(..., encoding="utf-8-sig")` — 유일 BOM 출력 |
 
 이동 시 이 12개는 sorted/round/float32/dtype/encoding을 1:1 보존. 이동 직후 `git diff -w`가 위치 변화 외 0임을 확인.
@@ -251,11 +251,11 @@ bok/
 
 - **글자보존 이동만:** 추출/이동 직후 `git diff -w`로 본문 변화 0 확인.
 - **결정성 체크리스트(12핀):** sorted/round(12)/float32/dtype-timing/encoding을 이동 시 1:1 보존.
-- **encoding 다양성 보존:** MP 3종+meta+walk = 디폴트 utf-8(BOM 없음), **overfit_diagnostics만 utf-8-sig(BOM)**. 절대 섞지 말 것 (Bloomberg Optimizer 인제스트 깨짐).
+- **encoding 다양성 보존:** MP 3종+meta+walk = 디폴트 utf-8(BOM 없음), **overfit_diagnostics만 utf-8-sig(BOM)**. 절대 섞지 말 것 (bbg Optimizer 인제스트 깨짐).
 - **index 정책 보존:** MP 3종 `index=True`(디폴트, MultiIndex 포함), meta/walk/overfit `index=False`. 파일별 인자 그대로.
 - **dict 순서/float 말단:** set 반복 의존 재유입 금지 — `test_determinism`(5 seed 교차)이 회귀 가드.
 - **category->object 타이밍:** load 시점 변환(`model_portfolio.py:263-267`)을 groupby/sort 이전으로 고정 — 이동/리팩터로 순서가 뒤바뀌지 않게.
-- **Bloomberg ticker:** `zfill(6)+" CH Equity"` 변환식·`MXCN1A_` 리터럴 보존 (도출식 일반화 금지).
+- **bbg ticker:** `zfill(6)+" CH Equity"` 변환식·`MXCN1A_` 리터럴 보존 (도출식 일반화 금지).
 - **2겹 회귀 게이트:** 매 Phase = `mp test` diff + 해시테스트 + pytest. 백테스트 41분은 Phase 5에서 1회(계산경로 무변경 확인용).
 
 ---

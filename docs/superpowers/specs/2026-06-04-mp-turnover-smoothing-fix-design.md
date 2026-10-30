@@ -12,10 +12,10 @@
 2026-04-30이 production에서 EMA smoothing이 적용된 **첫 회차**(prev 없음 → raw 배포)였고, **2026-05-31이 EMA 블렌딩이 실제로 처음 작동한 회차**다. 5월 산출물 검증 중 다음을 확인했다.
 
 - `output/mp_weight_history/factor_weights_2026-05-31.csv`: 47 factor, 합 = **1.000000** (메모리는 정상)
-- 그러나 **실제 배포되는 MP factor 가중치 합 = 0.7632** (37개 현재 선정분), 나머지 **0.2368은 4월에만 있던 10개 "decay 중" factor**가 차지 → 이들은 메모리(history)에만 남고 배포(Bloomberg 입력물)에서는 빠짐.
+- 그러나 **실제 배포되는 MP factor 가중치 합 = 0.7632** (37개 현재 선정분), 나머지 **0.2368은 4월에만 있던 10개 "decay 중" factor**가 차지 → 이들은 메모리(history)에만 남고 배포(bbg 입력물)에서는 빠짐.
 
 ### 1.2 두 가지 문제
-1. **배포 gross 축소 (버그):** `model_portfolio.py`의 `[6.5]` 단계에서 블렌딩 결과(union, 합 1.0)를 현재 선정 factor에만 매핑한 뒤 **renormalize를 하지 않아** 배포 합이 1.0 미만(5월 0.76)이 된다. Bloomberg Optimizer 입력물의 그로스가 의도보다 ~24% 작아진다.
+1. **배포 gross 축소 (버그):** `model_portfolio.py`의 `[6.5]` 단계에서 블렌딩 결과(union, 합 1.0)를 현재 선정 factor에만 매핑한 뒤 **renormalize를 하지 않아** 배포 합이 1.0 미만(5월 0.76)이 된다. bbg Optimizer 입력물의 그로스가 의도보다 ~24% 작아진다.
 2. **메모리 누적 (creep):** `blend_ema`는 union 기준으로 블렌딩하고 `save_factor_weights`는 그 union을 그대로 저장한다. 빠진 factor는 0.9배씩 감소할 뿐 0이 되지 않아, 회차가 지날수록 history의 factor 수가 단조 증가한다. 거의 배포되지 않는 유령 factor가 쌓여 관리·직관성이 떨어진다.
 
 ### 1.3 근본 원인: 백테스트와 production의 구현 분리(divergence)
@@ -65,7 +65,7 @@ prev가 존재하고 0 < α < 1.0일 때, 매 회차:
 1) blend  = α·raw + (1-α)·prev                         (union 기준, 합 = 1.0)
 2) prune  : blend에서 factor f 제거 ⇔ (blend[f] < min_weight) AND (f ∉ 현재선정 raw)
 3) memory = prune 생존분을 100% 재정규화                  → factor_weights_{date}.csv 저장(다음 회차 prev)
-4) deploy = memory에서 현재선정 factor만 추출 → 100% 재정규화 → Bloomberg 입력물
+4) deploy = memory에서 현재선정 factor만 추출 → 100% 재정규화 → bbg 입력물
 ```
 - **현재 선정된 factor는 비중이 작아도 절대 prune되지 않는다** (조건의 AND). 새로 진입해 α 때문에 작게 시작한 factor(예: 0.1×raw)도 "현재 선정에 있음"으로 보호된다.
 - **유지 = NOT(prune)** = `(blend[f] >= min_weight) OR (f ∈ 현재선정)`.

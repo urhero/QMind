@@ -206,7 +206,7 @@ def build_vol_regime(source, window: int = 18, k_cap: float = 1.5):
     t월까지의 데이터만 쓰는 expanding/rolling 이라, k_t 는 원래 "t월까지 알 수 있는 다음달
     (t+1) 노출 참고치"다 (연구 docs/experiments/calmar_overlay_20260721.md 의 walk-forward
     shift(1)과 동일 의미 — 이 함수는 계산만 하고 자동으로 shift 하지 않으니, 호출부에서
-    k.iloc[-1]을 "다음 달" 참고용으로 해석할 것). 자동 스케일링에는 쓰지 않고 Bloomberg
+    k.iloc[-1]을 "다음 달" 참고용으로 해석할 것). 자동 스케일링에는 쓰지 않고 bbg
     Target Portfolio 의 multiplier/TE 타깃을 수동으로 정할 때 정성 참고용으로만 쓴다.
 
     Args:

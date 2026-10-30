@@ -9,7 +9,7 @@
 
 ### 1.1 목적
 
-QMind(구 BOK — 원래 MXCN1A 전용으로 만들었다가 MXWO 로 확장, 2026-09-09 개명)은 **팩터 기반 Model Portfolio(MP) 생성 파이프라인**이다. 200+개 금융 팩터를 분석하여 최종 종목별 투자 비중(MP)을 산출하고, Bloomberg Optimizer에서 바로 사용 가능한 CSV를 생성한다. **MXCN1A(중국 A주)와 MXWO(MSCI World) 두 유니버스를 한 코드베이스가 지원**하며(2026-09-02 통합), 유니버스는 `BENCHMARK`(`.env` 우선, 없으면 `config.py` 상수)가 결정한다 — 아래 [1.1 유니버스 분리](#11-유니버스-분리-2026-09-02) 참조. 본문 서술은 MXWO 채택 스택 기준이며, MXWO의 MP는 **롤링 IS 48개월 + rank_score 순수 Top-60 선정(클러스터 dedup off, 히스테리시스 없음) + ERC(수축 0.2)·TS모멘텀 틸트 가중 + `style_cap`(20%)/섹터 숏캡(15%)** 으로 구성된다 (관례상 라벨은 Constrained EW) — 공분산/리스크 모델 기반의 종목단 최적화는 커밋 `8dfb64e`에서 제거됨.
+QMind(구 BOK — 원래 MXCN1A 전용으로 만들었다가 MXWO 로 확장, 2026-09-09 개명)은 **팩터 기반 Model Portfolio(MP) 생성 파이프라인**이다. 200+개 금융 팩터를 분석하여 최종 종목별 투자 비중(MP)을 산출하고, bbg Optimizer에서 바로 사용 가능한 CSV를 생성한다. **MXCN1A(중국 A주)와 MXWO(MSCI World) 두 유니버스를 한 코드베이스가 지원**하며(2026-09-02 통합), 유니버스는 `BENCHMARK`(`.env` 우선, 없으면 `config.py` 상수)가 결정한다 — 아래 [1.1 유니버스 분리](#11-유니버스-분리-2026-09-02) 참조. 본문 서술은 MXWO 채택 스택 기준이며, MXWO의 MP는 **롤링 IS 48개월 + rank_score 순수 Top-60 선정(클러스터 dedup off, 히스테리시스 없음) + ERC(수축 0.2)·TS모멘텀 틸트 가중 + `style_cap`(20%)/섹터 숏캡(15%)** 으로 구성된다 (관례상 라벨은 Constrained EW) — 공분산/리스크 모델 기반의 종목단 최적화는 커밋 `8dfb64e`에서 제거됨.
 
 ### 핵심 Funnel 구조
 
@@ -172,7 +172,7 @@ MXWO: [`mxwo_sharpe_ladder_20260729.md`](docs/experiments/mxwo_sharpe_ladder_202
      │         ├─ 종목별 동일가중 비중 + MP 합산    → weights_factor_*.csv
      │         ├─ 섹터 숏캡 + 배포 배수(목표 gross)  (위 파일에 반영)
      │         ├─ 스타일별 집계                    → weights_style_*.csv (+ weights_mp_* = MP 행만)
-     │         └─ 피벗 테이블 (Bloomberg용)        → weights_pivot_*.csv
+     │         └─ 피벗 테이블 (bbg용)        → weights_pivot_*.csv
 ```
 
 ### 2.2 단계별 데이터 변환 상세
@@ -416,7 +416,7 @@ agg_w = apply_sector_short_cap(agg_w, sector_short_cap)   # MXWO 0.15 (water-fil
 | `weights_factor_*.csv` | 팩터별 + MP 행이 모두 포함된 전체 가중치 | 감사 추적 |
 | `weights_style_*.csv` | 스타일별 집계 | 스타일 노출 모니터링 |
 | `weights_mp_*.csv` | 위 파일의 style=MP 행만 (종목별 최종 롱/숏 비중) | 최종 비중 확인 |
-| `weights_pivot_*.csv` | 피벗 형태 (행=종목, 열=스타일×팩터) | Bloomberg Optimizer 입력 |
+| `weights_pivot_*.csv` | 피벗 형태 (행=종목, 열=스타일×팩터) | bbg Optimizer 입력 |
 | `meta_data.csv` | 팩터 성과 지표 (CAGR, 순위) | 팩터 선정 근거 |
 
 ### 2.3 다운로드 파이프라인 (download 커맨드)
@@ -482,7 +482,7 @@ main.py
 | `config.py` PIPELINE_PARAMS | 파이프라인 비즈니스 파라미터 (style_cap, 거래비용, 팩터 수, 임계값 등). 이전 코드 내 산재하던 매직넘버를 중앙 집중화 |
 | `factor_info.csv` 팩터 목록 | 분석 대상 팩터 전체 변경 |
 | `hardcoded_weights.csv` | 프로덕션 MP 가중치 직접 변경 |
-| `_construct_and_export` 출력 로직 | CSV 포맷 변경 → Bloomberg Optimizer 연동 영향 가능 |
+| `_construct_and_export` 출력 로직 | CSV 포맷 변경 → bbg Optimizer 연동 영향 가능 |
 
 ### 3.5 데이터 파일 상세
 
@@ -510,18 +510,18 @@ main.py
   UN/UW/UA(NYSE/Nasdaq/Amex) 에도 있을 때만 인정 — 없으면 OTC (예: Airbus `EADSF`) 이므로 제외.
   요청은 `marketSecDes=Equity` (REIT 포함 — `Common Stock` 필터는 REIT 49개를 놓침). 도메사일과 본상장이 다른 소수
   (Coca-Cola HBC CHE->LN, ArcelorMittal LUX->NA)는 가격 결측으로 드러나므로 `figi_map.csv` 에서 손으로 교체
-- **Bloomberg 식별자**: `/isin/<ISIN>` 은 터미널 기본 가격소스 때문에 미국 OTC 라인(KDDI -> `KDDIF US`)으로 풀린다.
+- **bbg 식별자**: `/isin/<ISIN>` 은 터미널 기본 가격소스 때문에 미국 OTC 라인(KDDI -> `KDDIF US`)으로 풀린다.
   `/bbgid/<composite FIGI>` 는 복합 상장(`9433 JP`)으로 정확히 풀림 — 반드시 후자 사용
 - **필드**: `TOT_RETURN_INDEX_GROSS_DVDS` 는 요청 구간 시작가에 리베이스된 배당 재투자 지수 (배당 없는 구간은 PX_LAST 와 동일).
   끝/시작 비율 = 총수익률. USD 환산은 `HistoricalDataRequest` 의 `currency=USD` 오버라이드 (별도 요청 1회). 200 종목씩 청크
 - **기준가**: 날짜 정확 일치가 아니라 심볼별 "그 날짜 이하 마지막 거래일" (`asof_ret`, ffill). 국가별 휴일·시차 대응
 - **yfinance 기각 사유** (2026-09-17): 1,200 종목 다운로드를 몇 번 반복하자 429 rate limit (시간당 ~2,000 요청) 으로 수십 분
-  대기가 필요했고, 당일 실행 시 진행 중인 당일 봉이 섞여 들어와(end 배타 규칙 무시) 값이 흔들렸다 (CRDO -33.5% vs Bloomberg -28.6%).
-  Bloomberg 티커 != Yahoo 티커(북유럽 종류주 `ATCOA`/`ATCO-A.ST`, 싱가포르 코드) 보정도 필요했다. 매핑 파일이 NaN 으로
+  대기가 필요했고, 당일 실행 시 진행 중인 당일 봉이 섞여 들어와(end 배타 규칙 무시) 값이 흔들렸다 (CRDO -33.5% vs bbg -28.6%).
+  bbg 티커 != Yahoo 티커(북유럽 종류주 `ATCOA`/`ATCO-A.ST`, 싱가포르 코드) 보정도 필요했다. 매핑 파일이 NaN 으로
   덮이는 사고가 있었으므로, 소스를 다시 바꿀 때도 "광역 실패 시 매핑 파일 불변" 가드는 유지할 것
-- **의존성**: `blpapi` (Bloomberg 전용 pip 인덱스, Pipfile `[[source]] bloomberg`), OpenFIGI 는 `requests` 직접 호출
+- **의존성**: `blpapi` (bbg 전용 pip 인덱스, Pipfile `[[source]] bbg`), OpenFIGI 는 `requests` 직접 호출
   (키 없으면 10건/요청·분당 25요청, `OPENFIGI_API_KEY` 는 100건/요청)
-- **MXCN1A**: 산출물 ticker 가 이미 Bloomberg 형식(`000001 CH Equity`) 이라 FIGI 매핑 없이 직접 조회 (`attach_securities`)
+- **MXCN1A**: 산출물 ticker 가 이미 bbg 형식(`000001 CH Equity`) 이라 FIGI 매핑 없이 직접 조회 (`attach_securities`)
 
 #### 3.6.1 일별 대시보드 (`research/mtd_dashboard.py`, 2026-09-17)
 
@@ -545,8 +545,8 @@ main.py
 - **팩터 상하위 5**: 종목별 `{팩터 인덱스: 비중}` 희소 리스트(`f_prev`/`f_cur`, 두 북 합쳐 ~48k 항목, HTML ~1.5MB)를 넣고
   스타일과 같은 이어붙임으로 팩터 기여 계산. 팩터->스타일 맵은 `load_book` 이 모듈 전역 `FACTOR_STYLE` 에 누적
   (DataFrame.attrs 는 merge 에서 소실, dict 반환 apply 는 MultiIndex 로 펼쳐지므로 루프로 생성)
-- **종목명/팩터명**: 종목명은 Bloomberg `NAME`(`mtd_pnl.bdp`, ReferenceDataRequest) 을 `data/{BM}/security_names.csv` 에 캐시
-- **산업 그룹 (테마 노출, 2026-10-19)**: DB 에는 GICS 섹터만 있어 Bloomberg `GICS_INDUSTRY_GROUP_NAME`(25개 산업 그룹)을 `data/{BM}/security_industry.csv` 에 캐시(`_ref_cache`, 종목명과 같은 방식). MTD 탭 `산업 그룹 (GICS)` 표 = 롱/숏/순노출(배포 비중) + 기여(실현 이어붙이기, 기준일·모드 연동). 계기: 2026-10 MXWO 손실이 같은 섹터 안의 테마 회전(기술 하드웨어 롱 하락 vs 소비·필수소비 우량주 숏 반등)이라 섹터 표로는 안 보였음. Bloomberg 산업 그룹명은 30자에서 잘려 옴(예: `Health Care Equipment & Servic`)
+- **종목명/팩터명**: 종목명은 bbg `NAME`(`mtd_pnl.bdp`, ReferenceDataRequest) 을 `data/{BM}/security_names.csv` 에 캐시
+- **산업 그룹 (테마 노출, 2026-10-19)**: DB 에는 GICS 섹터만 있어 bbg `GICS_INDUSTRY_GROUP_NAME`(25개 산업 그룹)을 `data/{BM}/security_industry.csv` 에 캐시(`_ref_cache`, 종목명과 같은 방식). MTD 탭 `산업 그룹 (GICS)` 표 = 롱/숏/순노출(배포 비중) + 기여(실현 이어붙이기, 기준일·모드 연동). 계기: 2026-10 MXWO 손실이 같은 섹터 안의 테마 회전(기술 하드웨어 롱 하락 vs 소비·필수소비 우량주 숏 반등)이라 섹터 표로는 안 보였음. bbg 산업 그룹명은 30자에서 잘려 옴(예: `Health Care Equipment & Servic`)
 - **스타일 캡 선 (2026-10-21)**: 현재 포트 스타일 배분의 캡 선은 config 값이 아니라 그 북의 `mp_weight_history/style_cap_effect_{date}.csv` 에서 역산한다 (`weight_history.style_cap_used` — 캡에 눌린 스타일의 캡 후 합 최대값을 5%p 격자로 반올림, 없으면 config). 설정 변경(MXWO 25%->20%) 전에 만든 북을 20% 선으로 그려 위반처럼 보이던 문제 방지. viz 대시보드(`service/report/dashboard.py`)도 같은 함수
   (없는 sec 만 조회). 팩터는 `data/factor_info.csv` 의 `factorName`(영문 정식명, 전 팩터) 만 표 두 번째 줄에 표시 —
   `factor_desc_kr.csv` 한글 설명은 40개만 있어 일관성 때문에 쓰지 않는다 (사용자 결정 2026-09-18)
@@ -563,19 +563,19 @@ main.py
   있었다면' 이라 팩터 간 비교용. 대안(과거 실제 기여 = factor_contrib x 배포 배수)은 `deploy_multiplier_series()` 에 남겨 둠; 배수(월) = mp_target_gross.csv 목표 ÷ deploy_multiplier 스냅샷의 book_gross_before, 둘 다 계단식
   ffill + 최초 이전 bfill (사용자 규칙). MXWO 8월 0.3999(기록값과 동일), 최초 이전 0.4455; MXCN1A 전 기간 ~0.15 (14% 소급과 일치).
   (3) 현재 포트 탭 팩터 델타/순위도 배포 gross 기준 (전월 북은 그 달 배포 규모 그대로 — 규모 변경분이 델타에 포함)
-- **종목 기여 탭** (2026-09-21, Bloomberg PORT 캡처 참고): 설정 바 기간·기준 공유. 평균 비중 = Σ_t w_active(t)·drift / (idx+1)
+- **종목 기여 탭** (2026-09-21, bbg PORT 캡처 참고): 설정 바 기간·기준 공유. 평균 비중 = Σ_t w_active(t)·drift / (idx+1)
   (`avgWeight`: t<=k 전월 북 x G[t], 이후 당월 북 x G[t]/G[k+1]; 모델은 당월 북 x G[t]), 수익률 = G[idx+1]−1, 기여 = contribAt,
   배포 비중·스타일 열 = 기준일의 **활성 북** (리밸런싱일 이전이면 전월 북 `style_prev` x 규모 맞춤 배수, 이후 당월 북 `style_cur`).
   합계 기여 == MTD 실현. 검색·정렬·롱/숏 필터는 JS, 인쇄 제외. Bmrk/Alloc/Selec 열은 BM=0 이라 생략. 이 탭만 `main` 의
   max-w-6xl 을 풀어 화면 전체 폭 사용(15열, 1,600px 에서 가로 스크롤 없음), 셀 11.5px/4px 로 촘촘하게
-- **Bloomberg PORT 대조 (2026-09-21, MXCN1A MTD 9/18)**: Bloomberg Active CTR 9.60bp vs 대시보드 2.90bp. 로컬(CNY) 수익률은 종목 단위로
+- **bbg PORT 대조 (2026-09-21, MXCN1A MTD 9/18)**: bbg Active CTR 9.60bp vs 대시보드 2.90bp. 로컬(CNY) 수익률은 종목 단위로
   일치(중앙값 차이 0bp) -> 계산 방식 차이가 아니라 **MP != AP**. 분해: 겹침 394종목 +4.44bp (부호 반대 50종목 -0.99, 크기 2배 이상 차이 88종목
-  +1.64, 나머지 +3.79 = 실제 매매 시점·일별 링크), Bloomberg 에만 있는 26종목 +2.16bp (월중 지수 편입 등), MP 에만 있는 종목 -0.10bp.
-  핵심 원인: Bloomberg 최적화 유니버스 = 실제 BM(소형주 제외)이라 MP 526종목 중 133종목(gross 3.6%p)이 AP 에 없음. 숏 절단은 1종목(무관).
+  +1.64, 나머지 +3.79 = 실제 매매 시점·일별 링크), bbg 에만 있는 26종목 +2.16bp (월중 지수 편입 등), MP 에만 있는 종목 -0.10bp.
+  핵심 원인: bbg 최적화 유니버스 = 실제 BM(소형주 제외)이라 MP 526종목 중 133종목(gross 3.6%p)이 AP 에 없음. 숏 절단은 1종목(무관).
   분석 스크립트: scratchpad `cmp_bbg.py`/`cmp2.py`/`cmp3.py` (일회성, 저장소 밖)
 - **종목 기여 (임시) 탭** (2026-09-21): `bm_restrict()` — `bm_universe.csv` 밖 종목 비중 0, 남은 롱·숏을 각각 목표(gross/2)로 비례 조정
   (사용자 지정: 롱숏 합이 0 이 안 되면 비례 조정). 종목별 배율을 스타일 열에도 곱함(`sb_prev/sb_cur`), 팩터 열은 없음. 조정 내역(`bm_adj`)을
-  탭 머리에 표시. 파일이 없는 유니버스(MXWO)는 탭 숨김. 결과 MXCN1A 9/18: 6.84bp (Bloomberg 9.60bp 와의 잔차는 AP 최적화·매매 시점)
+  탭 머리에 표시. 파일이 없는 유니버스(MXWO)는 탭 숨김. 결과 MXCN1A 9/18: 6.84bp (bbg 9.60bp 와의 잔차는 AP 최적화·매매 시점)
 - **비중 표기 통일** (2026-09-23 사용자 지정): 대시보드 MTD·주간 리포트 탭의 스타일 표와 팩터 상하위 10 표, 한 장 PDF 의 스타일 표와
   팩터 차트 주석 모두 `배분% (롱 / 숏)` 한 열 — 배분 = 팩터 배분 비율(factor_weight, 합 100%; 스타일은 그 합), 괄호 = 배포 롱/숏
   소수점 1자리(섹터 숏캡 후). 2026-09-23 최종: 괄호는 **롱·|숏| 평균 한 값** `25.0% (3.9%)` — BM 유니버스 제한 후 팩터별 롱/숏이
@@ -584,7 +584,7 @@ main.py
 - **한 장 PDF 레이아웃** (2026-09-23): 두 섹션이 같은 구조 — 왼쪽 가로 막대(기여 bp, 위가 1등, 막대 끝 라벨), 오른쪽 `비중 (롱 / 숏)` 주석
   (`contrib_chart`/`right_notes` 공용). 스타일 섹션도 기여 내림차순, 합계 두 줄은 차트 아래 텍스트. 스타일 범례는 제목 아래 한 줄로 한 번만.
   주의: 사용자가 PDF 를 뷰어에 열어 두면 PermissionError 로 덮어쓰기 실패 — 닫고 재실행
-- **상하위 TOP 10 종목 기여** (2026-10-21): 아래쪽을 좌우로 나눠 왼쪽 팩터, 오른쪽 종목 상하위 10. 종목 기여는 페이지 합계와 같은 이어붙이기·같은 비중(BM 유니버스 제한본이면 제한 비중)이라 합계와 맞물린다. 라벨 = 거래소 코드가 붙은 Bloomberg 티커 / 짧은 이름 (`TICKER_AND_EXCH_CODE`·`SHORT_NAME` 을 `data/{BM}/security_tickers.csv`·`security_short_names.csv` 에 캐시, `_ref_cache` 공용 — DB 티커는 MXWO 에 거래소가 없고 MXCN1A 는 ' Equity' 형식이라 표시용으로 따로 받음). 막대 색 = 롱(진한 회청) / 숏(연회색), 오른쪽 주석 = 당월 북 비중(bp) · MTD 수익률. 전월 북에만 있던 종목은 전월 비중으로 롱/숏을 판정
+- **상하위 TOP 10 종목 기여** (2026-10-21): 아래쪽을 좌우로 나눠 왼쪽 팩터, 오른쪽 종목 상하위 10. 종목 기여는 페이지 합계와 같은 이어붙이기·같은 비중(BM 유니버스 제한본이면 제한 비중)이라 합계와 맞물린다. 라벨 = 거래소 코드가 붙은 bbg 티커 / 짧은 이름 (`TICKER_AND_EXCH_CODE`·`SHORT_NAME` 을 `data/{BM}/security_tickers.csv`·`security_short_names.csv` 에 캐시, `_ref_cache` 공용 — DB 티커는 MXWO 에 거래소가 없고 MXCN1A 는 ' Equity' 형식이라 표시용으로 따로 받음). 막대 색 = 롱(진한 회청) / 숏(연회색), 오른쪽 주석 = 당월 북 비중(bp) · MTD 수익률. 전월 북에만 있던 종목은 전월 비중으로 롱/숏을 판정
 - **기간 옵션** (2026-10-21): `--1m`(기준일 한 달 전 날짜의 종가부터) / `--from YYYY-MM-DD`. 기간이 전월로 넘어가면 전월 `build()`(그 달 북·교대일)를
   이어 붙여 구간별 `누적(끝) - 누적(시작)` 을 더한다 — 일별 실현 누적의 차이와 일치 (KIC 9/18→10/20 -65.8bp 확인). 롱/숏 노출·배분 비중은 현재 북.
   파일 `performance_analysis_1M_{KIC|BOK}..._<asof>.pdf`. 옵션 없으면 MTD PDF 와 바이트 동일
@@ -687,7 +687,7 @@ weight_raw["factor_weight"] = weight_raw["factor_weight"] * (weight_raw["mp_ls_w
 ```python
 df["ticker"] = df["ticker"].astype(str).str.zfill(6).add(" CH Equity")
 ```
-Bloomberg 형식으로 변환. 원본 ticker가 6자리를 초과하면 잘리지 않고 그대로 사용됨 (현재 중국 주식은 6자리이므로 문제 없음).
+bbg 형식으로 변환. 원본 ticker가 6자리를 초과하면 잘리지 않고 그대로 사용됨 (현재 중국 주식은 6자리이므로 문제 없음).
 
 ### 4.4 기술 부채 / 주의 사항
 
@@ -911,7 +911,7 @@ Top-50이 아닌, **실제로 비중이 할당된 최종 팩터**에만 적용.
 **raw / prev / new(=배포) 의미** (스무딩 제거, 메모리 구분 없음)
 - `raw` : 이번 회차 optimizer 산출 = **목표** (ERC/틸트 가중 + style_cap, 합 1.0)
 - `prev`: 직전 회차 **배포** 가중치 (`factor_weights_{prev_date}.csv` 로딩)
-- `new` (= 배포): `raw` 를 factor 키 정렬 후 합 1.0 으로 재정규화한 값 = **목표 그대로 배포**(스무딩 제거). `factor_weights_{date}.csv` 로 저장돼 다음 회차 prev(전월대비 delta 리포트용). 탈락 factor 는 배포에서 즉시 제거. Bloomberg 입력은 이 `new`.
+- `new` (= 배포): `raw` 를 factor 키 정렬 후 합 1.0 으로 재정규화한 값 = **목표 그대로 배포**(스무딩 제거). `factor_weights_{date}.csv` 로 저장돼 다음 회차 prev(전월대비 delta 리포트용). 탈락 factor 는 배포에서 즉시 제거. bbg 입력은 이 `new`.
 
 **공유 헬퍼**: `_build_factor_style_df` 가 factor union, style 매핑, weight_within_style 정규화 (스타일 합 0 이면 0) 의 공통 로직을 담당. `save_factor_styles` 와 `save_style_totals` 가 모두 이 헬퍼를 사용. (`deployed_weights` optional 인자는 함수에 남아있으나 `new`=배포(=raw 정규화)라 미사용.)
 
@@ -1039,7 +1039,7 @@ KPI 카드(CAGR/MDD/Sharpe/Calmar/승률/초과CAGR)는 `build_kpis()`에서 **�
 - **낙폭 구간 분석**: `compute_drawdown_episodes(cum, min_depth=0.01)`(dashboard_data)가 곡선에서 underwater episode(고점->저점->회복)를 추출 — 깊이(%) + peak/trough/recovery 시점 + 하락(peak->trough)·회복(trough->recovery)·전체 기간(개월), 미회복 시 ONGOING. `_drawdown_episodes_section()`이 EW_All/EW_Top50/CEW 곡선별 표(깊은 순, 1% 이상)로 렌더. 정적 산출물 `docs/experiments/drawdown_analysis.md`(특정 설정/기간)와 달리 **현재 OOS 곡선에서 실시간 계산**이라 숫자는 다름.
 - **QC 결과페이지 참고 컴포넌트(곡선 기반, read-only)**: ① `monthly_returns_table()`→`monthly_returns_heatmap_fig()` 연×월 수익률 히트맵(+연간 복리 'Year' 열, 상승=green/하락=red zmid=0), ② `extended_stats()` 확장 통계(Sortino/연변동성/최고·최저월/상승월%/왜도/최장연속손실)+`relative_metrics(bench="ew_return")` 벤치(선정 EW) 대비 Beta/Alpha(연)/추적오차/정보비율 → `_backtest_stats_card()` KPI 그리드, ③ `rolling_sharpe(window=12)`→`rolling_sharpe_fig()`. 전부 `walk_forward_results.csv` 월별 수익률만 소비 (전략/스키마 무수정).
 - 한글 차트 타이틀은 plotly JSON 내에서 `\uXXXX` 이스케이프로 저장됨(렌더링 정상). raw grep 시 주의.
-- Bloomberg 핸드오프 파일 `weights_pivot_*.csv`는 읽지도 수정하지도 않음.
+- bbg 핸드오프 파일 `weights_pivot_*.csv`는 읽지도 수정하지도 않음.
 ### 7.5 섹터 분해 (read-only parquet join)
 
 `weights_factor_*.csv`에는 `sec` 컬럼이 없다. `load_sector_map()`이 소스

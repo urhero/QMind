@@ -79,7 +79,7 @@ PIPELINE_PARAMS = {
 }
 ```
 
-운영 함의: Bloomberg Optimizer 입력 산출물의 동작이 **config.py 한 파일** 으로 완전 통제 가능.
+운영 함의: bbg Optimizer 입력 산출물의 동작이 **config.py 한 파일** 으로 완전 통제 가능.
 
 ---
 
@@ -257,7 +257,7 @@ python main.py download 2009-12-31 2026-04-30 --incremental
 python main.py mp 2009-12-31 2026-04-30
 ```
 
-### 3단계: Bloomberg Optimizer 입력
+### 3단계: bbg Optimizer 입력
 - `output/pivoted_total_agg_wgt_2026-04-30.csv` → Optimizer
 - TE / 제약 위반 사전 확인 (dry-run)
 - 첫 적용 시 종목 turnover ~80% 가능 → phase-in 검토

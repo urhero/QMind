@@ -16,7 +16,7 @@ joblib = "*"
 rich = "*"
 python-dotenv = "*"
 openpyxl = "*"
-blpapi = {version = "*", index = "bloomberg"}
+blpapi = {version = "*", index = "bbg"}
 
 [dev-packages]
 pytest = "*"
@@ -36,4 +36,4 @@ allow_prereleases = true
 [[source]]
 url = "https://blpapi.bloomberg.com/repository/releases/python/simple/"
 verify_ssl = true
-name = "bloomberg"
+name = "bbg"
