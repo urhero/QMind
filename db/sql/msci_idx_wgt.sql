@@ -47,7 +47,7 @@ GO
 
 IF OBJECT_ID('dbo.msci_idx_wgt') IS NULL
 CREATE TABLE dbo.msci_idx_wgt (
-    msci_index_code     varchar(6)  NOT NULL,
+    msci_index_code     varchar(12) NOT NULL,          -- MSCI 지수 코드. '718708_bf' = 공식 공표 전 백필 (아래, 검증 로그 없음)
     freq                char(1)     NOT NULL,          -- 'D' = SECURITY_REPORT, 'M' = M_SECURITY_REPORT
     basis               char(1)     NOT NULL,          -- 'T' = 당일 종가 구성, 'N' = 다음날(장 마감 후 반영) 구성
     calc_date           varchar(8)  NOT NULL,
@@ -89,6 +89,14 @@ CREATE TABLE dbo.msci_idx_wgt (
     udt                 datetime NOT NULL DEFAULT GETDATE(),   -- 행이 마지막으로 실제 바뀐 시각
     CONSTRAINT PK_msci_idx_wgt PRIMARY KEY (msci_index_code, freq, basis, calc_date, msci_security_code)
 )
+GO
+
+IF COL_LENGTH('dbo.msci_idx_wgt', 'msci_index_code') < 12   -- 2026-10-30: '718708_bf' 를 넣으려고 6 -> 12자 (PK 재생성, ~3,500만 행)
+BEGIN
+    ALTER TABLE dbo.msci_idx_wgt DROP CONSTRAINT PK_msci_idx_wgt;
+    ALTER TABLE dbo.msci_idx_wgt ALTER COLUMN msci_index_code varchar(12) NOT NULL;
+    ALTER TABLE dbo.msci_idx_wgt ADD CONSTRAINT PK_msci_idx_wgt PRIMARY KEY (msci_index_code, freq, basis, calc_date, msci_security_code);
+END
 GO
 
 IF OBJECT_ID('dbo.msci_idx_wgt_check') IS NULL
@@ -430,9 +438,41 @@ OUTER APPLY (SELECT MAX(i.index_name) index_name FROM dbo.INDEX_REPORT i
 WHERE w.freq = 'D' AND w.basis = 'N'
 GO
 
+-- 718708_bf (bf = backfill): 공식 718708(2019-12-02 부터 공표) 이 아닌 과거 구성 — msci_idx_wgt 에 msci_index_code '718708_bf', freq 'M',
+-- 2009-12 ~ 2019-11 월말 당일 T·다음날 N 으로 들어 있다 (research/china_a_backfill.py write, 검증 로그 없음). 백테스트는 2019-11 월말까지 이것을 쓴다 (사용자 2026-10-30).
+-- 2019-11-26 이후 718708 방식(대형+중형, FIF, IIF 미적용)에 맞춰 중형주까지 담는다 — 실제 2019-11-26 전 A주 편입은 대형주뿐(=718709)이었다.
+--   2009-12 ~ 2019-10: 규칙 시뮬레이션 (후보 133333, EM 크기 기준, 2·5·8·11월 재조정; 본토 CNY 라인 값)
+--   2019-11 월말     : 실제 플래그로 고른 대형+중형 구성 (중형주 편입 직후, 합계 공표 없음 -> 검증 불가; 홍콩 CNH 라인 값)
+
+-- 718708 월말 이력 (다음날 기준, 백테스트용): 2019-11 월말까지 '718708_bf', 2019-12 부터 공식 '718708' (src 칸).
+-- 공식 월말 원천이 빠진 달(2026-05)은 그 달 마지막 일별 N 으로 채운다 (calc_date 로 구분). 진행 중인 달은 넣지 않는다.
+CREATE OR ALTER VIEW dbo.View_msci_idx_wgt_718708_hist AS
+WITH m AS (
+    SELECT calc_date, msci_security_code, isin, bb_ticker, wgt FROM dbo.msci_idx_wgt
+    WHERE msci_index_code = '718708' AND freq = 'M' AND basis = 'N'
+),
+dl AS (
+    SELECT MAX(calc_date) calc_date FROM dbo.msci_idx_wgt
+    WHERE msci_index_code = '718708' AND freq = 'D' AND basis = 'N'
+    GROUP BY LEFT(calc_date, 6)
+    HAVING LEFT(MAX(calc_date), 6) NOT IN (SELECT LEFT(calc_date, 6) FROM m)
+       AND LEFT(MAX(calc_date), 6) < CONVERT(varchar(6), GETDATE(), 112)
+)
+SELECT LEFT(calc_date, 6) ym, calc_date, msci_security_code, isin, bb_ticker, wgt, CAST('718708' AS varchar(12)) src FROM m
+UNION ALL
+SELECT LEFT(w.calc_date, 6), w.calc_date, w.msci_security_code, w.isin, w.bb_ticker, w.wgt, '718708'
+FROM dbo.msci_idx_wgt w JOIN dl ON dl.calc_date = w.calc_date
+WHERE w.msci_index_code = '718708' AND w.freq = 'D' AND w.basis = 'N'
+UNION ALL
+SELECT LEFT(b.calc_date, 6), b.calc_date, b.msci_security_code, b.isin, b.bb_ticker, b.wgt, '718708_bf'
+FROM dbo.msci_idx_wgt b
+WHERE b.msci_index_code = '718708_bf' AND b.freq = 'M' AND b.basis = 'N' AND b.calc_date < '20191201'
+GO
+
 /* ---- 최초 적재 (1회) — 연도 단위로 나눠 돌리면 잠금·로그 부담이 작다 ----
 EXEC dbo.Store_MSCI_Idx_Wgt '990100', 'M', '19970101', '20261231';   -- 1997~2002-03 은 검증 실패로 저장 안 됨 (공표 대비 +2~4종목)
 EXEC dbo.Store_MSCI_Idx_Wgt '990100', 'D', '20170401', '20171231';   -- 이후 연도별 반복 ... '20260101', '20261231'
+-- 718708 공표 전 구간은 공식이 아니므로 여기 넣지 않는다 -> '718708_bf' (python research/china_a_backfill.py write)
 
 ---- 확인 ----
 SELECT * FROM dbo.msci_idx_wgt_check WHERE passed = 0 ORDER BY msci_index_code, freq, basis, calc_date;
