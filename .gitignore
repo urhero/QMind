@@ -206,6 +206,10 @@ data/*/*
 !data/*/mp_multiplier.csv
 !data/*/rebalance_log.csv
 !data/*/mtd_target_gross.csv
+# 리스크 모델 파생물 (노출·팩터수익·공분산·분류 이력) — risk_model 브랜치에서 일단 커밋 (2026-10-30 사용자 결정).
+# 원천 추출본(data/*/msci/, data/*/global/, data/*/bbg/)은 계속 무시.
+!data/*/risk/
+!data/*/classification.parquet
 #config.py
 .cursorindexingignore
 node_modules/
