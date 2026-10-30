@@ -427,9 +427,15 @@ class ModelPortfolioPipeline:
         #   weights_pivot  : 피벗 (bbg Optimizer 입력)
         final_weights.to_csv(out / f"weights_factor_{end_date}{suffix}.csv")
         final_style_weight.to_csv(out / f"weights_style_{end_date}{suffix}.csv")
-        final_style_weight.xs("MP", level="style", drop_level=False).to_csv(
-            out / f"weights_mp_{end_date}{suffix}.csv"
-        )
+        mp_weights = final_style_weight.xs("MP", level="style", drop_level=False)
+        mp_weights.to_csv(out / f"weights_mp_{end_date}{suffix}.csv")
+        # 엑셀용 사본 — CSV 를 엑셀로 열면 일부 숫자가 텍스트로 인식되므로 숫자형 그대로 저장 (2026-10-02)
+        mp_xlsx = mp_weights.reset_index()
+        mp_xlsx["ddt"] = pd.to_datetime(mp_xlsx["ddt"])
+        with pd.ExcelWriter(
+            out / f"weights_mp_{end_date}{suffix}.xlsx", datetime_format="yyyy-mm-dd"
+        ) as writer:
+            mp_xlsx.to_excel(writer, index=False)
         # 피벗 테이블 (MP factor_weight 백필 + 결정적 출력 가드는 헬퍼에 보존)
         pivoted_final = build_pivoted_export(final_weights, sim_result)
         pivoted_final.to_csv(out / f"weights_pivot_{end_date}{suffix}.csv")
