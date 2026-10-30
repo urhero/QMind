@@ -14,6 +14,8 @@
    - 정렬: 날짜, 같은 날짜 안은 MSCI 종목코드 순 (2026-10-29 성능 수정). 일별/월말을 UNION ALL 로 나누면
      두 PK seek 결과가 이미 이 순서라 merge 로 합치기만 한다. 이전의 'ORDER BY calc_date, isin' 은 결과 전체를
      정렬하다 tempdb 로 넘쳐 990100 11년치(378만 행)가 첫 행까지 14초 -> 1초.
+     2026-10-30: 월말 대체 확인(NOT EXISTS 일별)을 날짜 범위 + LOOP JOIN 으로 — merge 가 일별 행 전체를 읽고 정렬하던 것을 날짜별 seek 로.
+     990100 11년치 첫 행 0.94초 -> 0.20초, 전체 5.6 -> 5.0초 (결과 동일). 남는 시간은 행 전송.
    ============================================================================ */
 USE [MSCIDB]
 GO
@@ -46,13 +48,15 @@ BEGIN
 		        AND m.calc_date BETWEEN @start_date AND @end_date AND m.isin IS NOT NULL
 		        AND NOT EXISTS (SELECT 1 FROM dbo.msci_idx_wgt d
 		                        WHERE d.msci_index_code = @base AND d.freq = 'D'
-		                          AND d.basis = 'N' AND d.calc_date = m.calc_date)
+		                          AND d.basis = 'N' AND d.calc_date = m.calc_date
+		                          AND d.calc_date BETWEEN @start_date AND @end_date)
 		      UNION ALL
 		      SELECT b.calc_date, b.msci_security_code, b.isin, b.wgt   -- 백필 구간 (공식 코드로 부르면 @bf_end = '' 라 0행)
 		      FROM dbo.msci_idx_wgt b
 		      WHERE b.msci_index_code = @msci_index_code AND b.freq = 'M' AND b.basis = 'N'
 		        AND b.calc_date BETWEEN @start_date AND @end_date AND b.calc_date < @bf_end AND b.isin IS NOT NULL) w
-		ORDER BY w.calc_date, w.msci_security_code;
+		ORDER BY w.calc_date, w.msci_security_code
+		OPTION (LOOP JOIN);   -- 월말 대체 확인을 날짜별 seek 로 (없으면 merge 가 그 지수 일별 행 전체를 읽고 정렬 -> 첫 행 지연)
 	ELSE
 		-- msci_idx_wgt 에 아직 없는 지수: 기존 그대로
 		SELECT ddt, isin, wgt
