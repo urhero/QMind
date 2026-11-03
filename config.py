@@ -57,7 +57,7 @@ _COMMON_PARAMS = {
     # 실제 종목매매비용 / 팩터별 전액계상 비용 = 0.574 (2026-07-03,
     # docs/experiments/mp_level_cost_20260703.md) -> 0.6 으로 근사 적용
     # (MXWO 10bp x 0.6 = 6bp; MXCN1A 20bp x 0.6 = 12bp).
-    # mp(운영) 파이프라인에는 적용되지 않음 (백테스트 전용).
+    # 선정·가중 입력 비용이라 mp(운영)도 같은 값을 쓴다 (2026-11-02, optimization.selection_cost_bps).
     "backtest_cost_multiplier": 0.6,   # 선정 입력용 비용 (비용 인지 선정이 A/B 최적 — 0/22bp 모두 열위). 주의: factor-level 성과 회계는 고회전 구성에서 실비용 과소계상 -> 정본 성과 판단은 mp_level_cost_backtest 실측 기준
     "top_factor_count": 50,            # rank_score 상위 절단 수 (dedup off 또는 cluster_method=topn 에서 적용; winner_median 은 미사용). backtest CLI --top-factors 미지정 시 이 값
     "spread_threshold_pct": 0.05,      # L/N/S 라벨링 임계값. MXWO 0.05 (2026-07-29, 0.025~0.05 고원) / MXCN1A 0.05 (2026-08-05: MDD -10.1->-6.1%, Calmar 0.305); 구 0.10

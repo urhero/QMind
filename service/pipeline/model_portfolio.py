@@ -32,6 +32,7 @@ from service.pipeline.factor_analysis import (
     ANALYZE_COLS,
     calculate_factor_stats_batch,
     filter_and_label_factors,
+    label_book_at_date,
     slice_recent_months,
 )
 from service.pipeline.optimization import (
@@ -156,14 +157,27 @@ class ModelPortfolioPipeline:
         # [3] 섹터 필터링 + L/N/S 라벨링 — README [3]
         factor_name_list = factor_metadata.factorName.tolist()
         style_name_list = factor_metadata.styleName.tolist()
-        kept_abbrs, kept_names, kept_styles, _, _, self.filtered_data = filter_and_label_factors(
+        kept_abbrs, kept_names, kept_styles, _, dropped_sec, self.filtered_data = filter_and_label_factors(
             factor_abbr_list, factor_name_list, style_name_list, self.factor_stats,
             spread_threshold_pct=self.pipeline_params["spread_threshold_pct"],
         )
 
+        # 북 라벨은 기준일 값 val(T) 순위 (백테스트의 다음 달 행과 같은 신호 시점, 2026-11-02)
+        book_frames = label_book_at_date(
+            slim_data, kept_abbrs, dropped_sec, self.filtered_data, factor_abbr_list, orders, end_date,
+            test_mode=bool(test_file), min_sector_stocks=self.pipeline_params["min_sector_stocks"],
+        )
+
         # [4] 롱-숏 수익률 + 팩터 유니버스 선정 — README [4]
+        # 엔진은 IS 마지막 달 비용을 다음 달 목표 비중까지 보고 계상한다 -> 기준일 북을 다음 달 행으로
+        # 붙여 같은 수익률 행렬을 만든다 (그 달 수익은 없으므로 evaluate_universe 가 잘라낸다).
+        next_month = pd.Timestamp(end_date) + pd.offsets.MonthEnd(1)
+        return_frames = [
+            pd.concat([labeled, book.assign(ddt=next_month, M_RETURN=0.0)], ignore_index=True)
+            for labeled, book in zip(self.filtered_data, book_frames)
+        ]
         self.return_matrix, self.meta = evaluate_universe(
-            kept_abbrs, kept_names, kept_styles, self.filtered_data, end_date, test_file,
+            kept_abbrs, kept_names, kept_styles, return_frames, end_date, test_file,
             self.pipeline_params,
         )
 
@@ -227,9 +241,7 @@ class ModelPortfolioPipeline:
         sim_result = (sim_result[0], self.weights)
 
         # [7] MP 구성 + CSV 출력 — README [7]
-        self._construct_and_export(
-            sim_result, kept_abbrs, self.filtered_data, end_date, test_file
-        )
+        self._construct_and_export(sim_result, kept_abbrs, book_frames, end_date, test_file)
 
         logger.info("Pipeline completed in %.2fs - files saved in %s", time.time() - t0, OUTPUT_DIR)
 

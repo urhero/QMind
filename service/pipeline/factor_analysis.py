@@ -151,6 +151,70 @@ def slice_recent_months(df: pd.DataFrame, window_months: int | None) -> pd.DataF
     return df[df["ddt"] >= cutoff]
 
 
+def _assign_quantile(fdf: pd.DataFrame, test_mode: bool, min_sector_stocks: int) -> pd.DataFrame:
+    """val_lagged 의 날짜·섹터 내 순위로 Q1~Q5 를 매긴다 (미달 행 제거, 보조 컬럼 삭제)."""
+    # rank + count (2키 groupby — 팩터당 ~53K행, ~900그룹)
+    grp = fdf.groupby(["ddt", "sec"])["val_lagged"]
+    fdf["rank"] = grp.rank(method="average", ascending=True)
+    count_series = grp.transform("count")
+
+    # percentile (count=1이면 분모=0이므로 NaN 처리)
+    fdf["percentile"] = np.where(
+        count_series > 1,
+        (fdf["rank"] - 1) / (count_series - 1) * 100,
+        np.nan,
+    )
+    if not test_mode:
+        fdf.loc[count_series <= min_sector_stocks, "percentile"] = np.nan
+
+    # quantile (percentile 경계 include_lowest)
+    fdf["quantile"] = pd.cut(
+        fdf["percentile"], bins=[0.0, 20.0, 40.0, 60.0, 80.0, 105.0],
+        labels=["Q1", "Q2", "Q3", "Q4", "Q5"], include_lowest=True, right=True,
+    )
+    fdf = fdf.dropna(subset=["quantile"])
+    return fdf.drop(columns=["rank", "percentile", "val_lagged"])
+
+
+def label_book_at_date(
+    merged_data: pd.DataFrame,
+    kept_abbrs: list[str],
+    dropped_sec: list[list[str]],
+    filtered_data: list[pd.DataFrame],
+    factor_abbr_list: list[str],
+    orders: list[int],
+    as_of,
+    test_mode: bool = False,
+    min_sector_stocks: int = 10,
+) -> list[pd.DataFrame]:
+    """기준일 값 val(T) 순위로 배포 북 라벨을 만든다 (2026-11-02, 백테스트와 같은 신호 시점).
+
+    백테스트 행 t 는 val(t-1) 순위로 월 t 수익을 번다. 기준일 T 북은 월 T+1 에 보유하므로
+    val(T) 순위여야 같은 전략이다. filtered_data 의 T 행은 val_lagged = val(T-1) 순위라
+    그대로 쓰면 신호가 한 달 늦다. 규칙(제거 섹터, 분위별 라벨)은 학습 결과를 그대로 매핑한다.
+
+    Returns:
+        kept_abbrs 순서의 라벨 프레임 리스트 (ddt == as_of 행만). 기준일 값이 없는 팩터는 빈 프레임.
+    """
+    order_map = dict(zip(factor_abbr_list, orders))
+    today = merged_data[merged_data["ddt"] == pd.Timestamp(as_of)].dropna(subset=["val", "M_RETURN"])
+    grouped = today.groupby("factorAbbreviation", observed=True)
+    book_frames = []
+    for abbr, dropped, labeled in zip(kept_abbrs, dropped_sec, filtered_data):
+        if abbr not in grouped.groups:
+            book_frames.append(labeled.iloc[0:0])
+            continue
+        fdf = grouped.get_group(abbr).copy()
+        # [4] 과 같은 방향 통일: factorOrder=0(높을수록 좋음)은 부호 플립
+        fdf["val_lagged"] = fdf["val"] if bool(order_map.get(abbr, 1)) else -fdf["val"]
+        fdf = _assign_quantile(fdf.drop(columns="val"), test_mode, min_sector_stocks)
+        fdf = fdf[~fdf["sec"].isin(dropped)].copy()
+        label_map = labeled.groupby("quantile", observed=False)["label"].first().to_dict()
+        fdf["label"] = fdf["quantile"].map(label_map)
+        book_frames.append(fdf.dropna(subset=["label"]))
+    return book_frames
+
+
 def calculate_factor_stats_batch(
     merged_data: pd.DataFrame,
     factor_abbr_list: list[str],
@@ -212,9 +276,7 @@ def calculate_factor_stats_batch(
 
     # [5] 팩터별 통합 루프: rank + quantile + 집계
     #     (2키 groupby가 3키보다 2.8x 빠르므로 per-factor 루프가 최적)
-    labels = ["Q1", "Q2", "Q3", "Q4", "Q5"]
     q_bot = "Q5"
-    bins = [0.0, 20.0, 40.0, 60.0, 80.0, 105.0]  # percentile 경계 (include_lowest)
     grouped = df.groupby("factorAbbreviation")
 
     results = []
@@ -229,29 +291,7 @@ def calculate_factor_stats_batch(
             results.append((None, None, None, None))
             continue
 
-        fdf = grouped.get_group(factor_abbr).copy()
-
-        # rank + count (2키 groupby — 팩터당 ~53K행, ~900그룹)
-        grp = fdf.groupby(["ddt", "sec"])["val_lagged"]
-        fdf["rank"] = grp.rank(method="average", ascending=True)
-        count_series = grp.transform("count")
-
-        # percentile (count=1이면 분모=0이므로 NaN 처리)
-        fdf["percentile"] = np.where(
-            count_series > 1,
-            (fdf["rank"] - 1) / (count_series - 1) * 100,
-            np.nan,
-        )
-        if not test_mode:
-            fdf.loc[count_series <= min_sector_stocks, "percentile"] = np.nan
-
-        # quantile
-        fdf["quantile"] = pd.cut(
-            fdf["percentile"], bins=bins,
-            labels=labels, include_lowest=True, right=True,
-        )
-        fdf = fdf.dropna(subset=["quantile"])
-        fdf = fdf.drop(columns=["rank", "percentile", "val_lagged"])
+        fdf = _assign_quantile(grouped.get_group(factor_abbr).copy(), test_mode, min_sector_stocks)
 
         # 섹터 × 분위별 평균 수익률 (시간축 산술평균)
         sector_return_df = (

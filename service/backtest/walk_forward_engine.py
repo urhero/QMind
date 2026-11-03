@@ -39,6 +39,7 @@ from service.pipeline.model_portfolio import ModelPortfolioPipeline
 from service.pipeline.optimization import (
     blend_deploy_weights,
     optimize_constrained_weights,
+    selection_cost_bps,
     weight_kwargs_from,
 )
 from service.pipeline.weight_construction import resolve_target_gross
@@ -259,13 +260,11 @@ def _resolve_backtest_cost_bps(pp: dict) -> float:
     0.6 으로 근사 (현 MXWO 기본 10bp x 0.6 = 6bp). 상세는 config.py 주석 참조.
 
     - 배수는 config PIPELINE_PARAMS['backtest_cost_multiplier'] 로 조정한다 (figure 관리).
-    - 운영 mp 파이프라인에는 적용되지 않는다 (이 함수는 백테스트 엔진 전용).
+    - 운영 mp 선정 입력도 같은 값을 쓴다 (optimization.selection_cost_bps, 2026-11-02).
     """
     # 키 폴백 없음 (2026-08-25): 구 fallback 20.0 은 config(10bp)와 어긋나 키 누락 시
     # 조용히 2배 비용으로 돌았음. 호출자는 모두 PIPELINE_PARAMS 기반 -> fail-loud.
-    base = float(pp["transaction_cost_bps"])
-    mult = float(pp.get("backtest_cost_multiplier", 0.6))
-    return base * mult
+    return selection_cost_bps(pp)
 
 
 def _run_weight_optimization(

@@ -386,6 +386,15 @@ per-factor:
 
 #### [7] _construct_and_export: MP 구성 + CSV 출력
 
+**북 라벨 시점 (2026-11-02 수정, `factor_analysis.label_book_at_date`)**: 백테스트 행 t 는 val(t-1) 순위로 월 t 수익을 벌므로, 월 T+1 에 보유하는 기준일 T 북은
+val(T) 순위여야 같은 전략이다. 구 코드는 `filtered_data` 의 T 행(= val_lagged = val(T-1) 순위)을 그대로 써서 신호가 한 달 늦었다 (MXWO Sharpe 0.46 vs 수정 0.71).
+규칙(제거 섹터, 분위별 라벨)은 IS 학습 결과를 그대로 매핑하고 재학습하지 않는다.
+
+**mp 와 엔진이 같아지는 조건**: (1) 규칙 학습 주기: mp 는 매달, 엔진은 `--factor-rebal-months` (기본 6) (2) 위 북 라벨 시점
+(3) 선정·가중 입력 비용 `optimization.selection_cost_bps` (mp·엔진 공유, 구 mp 는 종목비용 전액) (4) IS 마지막 달 비용: 기준일 북을 다음 달 행으로 붙여 계상
+(`model_portfolio.run`, 수익이 없는 다음 달 행은 `evaluate_universe` 가 잘라냄). expanding IS 는 이것으로 일치한다 (비중 차이 < 0.0004%p). 롤링 IS(MXWO)는 잔차가 남고,
+엔진 행 t 의 유니버스가 월말 t 구성인 차이도 남는다 ([`mp_book_lag_fix_20261102.md`](docs/experiments/mp_book_lag_fix_20261102.md)).
+
 **종목별 비중 계산**:
 ```python
 # 동일가중: label(±1) × factor_weight / count_per_group

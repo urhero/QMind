@@ -196,6 +196,15 @@ def blend_deploy_weights(
     return {f: w / total for f, w in blended.items() if w > 1e-10}
 
 
+def selection_cost_bps(pp: dict) -> float:
+    """선정·가중 입력(팩터 L/S 수익률 행렬)의 비용 = 종목비용 x backtest_cost_multiplier (단일 출처).
+
+    2026-11-02: mp 는 종목비용 전액, 엔진은 0.6 배를 써서 같은 데이터로도 팩터 순위·공분산이 달랐다.
+    실제 종목단 매매비용 계상(build_stock_series)은 이 값이 아니라 종목비용 전액을 쓴다.
+    """
+    return float(pp["transaction_cost_bps"]) * float(pp.get("backtest_cost_multiplier", 0.6))
+
+
 def weight_kwargs_from(pp: dict) -> dict:
     """PIPELINE_PARAMS -> optimize_constrained_weights 키워드 인자 추출 (단일 출처).
 

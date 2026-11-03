@@ -20,6 +20,7 @@ from service.factor.selection import (
     select_factors,
 )
 from service.paths import HISTORY_DIR, OUTPUT_DIR, TEST_OUTPUT_DIR, dated
+from service.pipeline.optimization import selection_cost_bps
 from service.pipeline.weight_history import load_prev_selection
 from utils.validation import validate_return_matrix
 
@@ -40,8 +41,10 @@ def evaluate_universe(kept_abbrs, kept_names, kept_styles, filtered_data, end_da
     ret_df = aggregate_factor_returns(
         filtered_data, kept_abbrs,
         backtest_start=pipeline_params["backtest_start"],
-        cost_bps=pipeline_params["transaction_cost_bps"],
+        cost_bps=selection_cost_bps(pipeline_params),
     )
+    # 다음 달 행은 마지막 달 턴오버 계산용일 뿐 수익이 없다 (model_portfolio.run)
+    ret_df = ret_df[ret_df.index <= pd.Timestamp(end_date)]
     if ret_df.empty:
         raise ValueError(
             f"No valid factor returns after aggregation. "

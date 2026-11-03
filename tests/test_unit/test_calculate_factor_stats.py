@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from service.pipeline.factor_analysis import (
     calculate_factor_stats_batch,
+    filter_and_label_factors,
+    label_book_at_date,
 )
 
 
@@ -45,6 +47,30 @@ def _make_multi_factor_frame(
                     "factorAbbreviation": fa,
                 })
     return pd.DataFrame(rows)
+
+
+def test_book_labels_use_as_of_values() -> None:
+    """배포 북 라벨은 기준일 값 순위 (전월 값으로 만들면 백테스트보다 신호가 한 달 늦다)."""
+    dates = pd.date_range("2024-01-31", periods=6, freq="ME")
+    rows = []
+    for m, d in enumerate(dates):
+        for s in range(10):
+            # 마지막 달 직전까지 val 큰 종목이 수익도 높고, 마지막 달에 순위가 뒤집힌다
+            val = float(9 - s if m == 5 else s)
+            rows.append({"gvkeyiid": f"G{s}", "ddt": d, "sec": "S1", "val": val,
+                         "M_RETURN": 0.01 * s, "factorAbbreviation": "FA", "ticker": f"T{s}", "isin": f"I{s}"})
+    df = pd.DataFrame(rows)
+    stats = calculate_factor_stats_batch(df, ["FA"], [0], test_mode=True)   # 0 = 높을수록 좋음
+    kept, _, _, _, dropped, labeled = filter_and_label_factors(["FA"], ["FA"], ["S"], stats)
+    T = dates[-1]
+
+    old = labeled[0][labeled[0]["ddt"] == T].set_index("gvkeyiid")["label"]
+    book = label_book_at_date(df, kept, dropped, labeled, ["FA"], [0], T, test_mode=True)[0]
+    new = book.set_index("gvkeyiid")["label"]
+
+    assert (book["ddt"] == T).all()
+    assert old["G9"] == 1 and old["G0"] == -1      # 전월 값 순위: G9 롱
+    assert new["G0"] == 1 and new["G9"] == -1      # 기준일 값 순위: 뒤집혀 G0 롱
 
 
 class TestCalculateFactorStatsBatch:
