@@ -286,13 +286,12 @@ top = fdf.sort_values("c", ascending=False).head(10); bot = fdf.sort_values("c",
 sel = pd.concat([top, bot.iloc[::-1]]).drop_duplicates()
 n_top = len(top)
 fig.text(CR, 0.872, "상하위 Top 10 팩터 기여", fontsize=10.5, weight="bold", color=INK)
-# 두 칸 막대 (종목 기여와 같은 틀, 2026-10-30 사용자 지정): 첫 칸 = 기여(제목 값, fold), 둘째 칸 = 배분 비중. 오른쪽 숫자 = 롱숏 평균. 줄 순서 = 기여 내림차순
-ax2 = fig.add_axes([0.70, 0.505, 0.06, 0.335]); ax2w = fig.add_axes([0.77, 0.505, 0.06, 0.335])
-contrib_chart(ax2, [f"{f_} ({STYLE_ABBR.get(r['style'], '?')})\n{fname.get(f_, '')[:24]}" for f_, r in sel.iterrows()], list(sel.c * 1e4),
-              [scol_(x) for x in sel["style"]], split_after=n_top, fs=FS, vfs=FS, marks=[scol_(x) for x in sel["style"]], lim_k=1.1, fold=True)
-contrib_chart(ax2w, None, [FW.get(f_, 0.0) * 100 for f_ in sel.index], [scol_(x) for x in sel["style"]], split_after=n_top, fs=FS, vfs=FS,
-              xlabel="배분 비중 (%)", sym=False, vfmt="{:.1f}", lim_k=1.1)
-right_notes(ax2w, [f"{(r.long - r.short) / 2 * 100:4.1f}%" for f_, r in sel.iterrows()], "롱숏 평균", fs=FS, footer="기여 내림차순")
+# 두 칸 막대 (아래 두 차트와 같은 틀, 2026-11-02 사용자 지정): 왼쪽 = 배분 비중, 오른쪽 = 기여(fold). 오른쪽 숫자 = 롱숏 평균. 줄 순서 = 기여 내림차순
+ax2w = fig.add_axes([0.70, 0.505, 0.06, 0.335]); ax2 = fig.add_axes([0.77, 0.505, 0.06, 0.335])
+contrib_chart(ax2w, [f"{f_} ({STYLE_ABBR.get(r['style'], '?')})\n{fname.get(f_, '')[:24]}" for f_, r in sel.iterrows()], [FW.get(f_, 0.0) * 100 for f_ in sel.index],
+              [scol_(x) for x in sel["style"]], split_after=n_top, fs=FS, vfs=FS, marks=[scol_(x) for x in sel["style"]], xlabel="배분 비중 (%)", sym=False, vfmt="{:.1f}", lim_k=1.1)
+contrib_chart(ax2, None, list(sel.c * 1e4), [scol_(x) for x in sel["style"]], split_after=n_top, fs=FS, vfs=FS, lim_k=1.1, fold=True)
+right_notes(ax2, [f"{(r.long - r.short) / 2 * 100:4.1f}%" for f_, r in sel.iterrows()], "롱숏 평균", fs=FS, footer="기여 내림차순")
 
 # ④ 종목 기여 상하위 10 (아래 왼쪽) — 페이지 합계와 같은 이어붙이기·같은 비중, 라벨 = bbg 티커 + 짧은 이름, 막대 = 스타일 색 누적 (2026-10-30)
 def _side(s_):
@@ -317,13 +316,13 @@ ts_ = sk.sort_values("c", ascending=False).head(10); bs_ = sk.sort_values("c").h
 ss_ = pd.concat([ts_, bs_.iloc[::-1]])
 fig.text(LM, 0.445, "상하위 Top 10 종목 기여", fontsize=10.5, weight="bold", color=INK)
 style_legend(CL)
-# 두 칸 막대 (액티브 비중과 같은 틀, 2026-10-30 사용자 지정): 첫 칸 = 기여(제목 값), 둘째 칸 = 비중, 둘 다 스타일 색 누적. 오른쪽 숫자 = 수익률. 줄 순서 = 기여 내림차순
-ax3 = fig.add_axes([0.20, 0.07, 0.09, 0.35]); ax3w = fig.add_axes([0.30, 0.07, 0.09, 0.35])
-contrib_chart(ax3, [f"{t_}  {n_[:15]}" for t_, n_ in zip(ss_.tk, ss_.nm)], list(ss_.c * 1e4), None, split_after=len(ts_), fs=FS, vfs=5.6,
-              stacks=[{k: v * 1e4 for k, v in d.items()} for d in ss_.cst], order=ST_ORDER, lim_k=1.1, fold=True)
-contrib_chart(ax3w, None, list(ss_.w * 1e4), None, split_after=len(ts_), fs=FS, vfs=5.6, xlabel="비중 (bp)", lim_k=1.1,
+# 두 칸 막대 (액티브 비중과 같은 틀, 2026-11-02 사용자 지정): 왼쪽 = 비중, 오른쪽 = 기여(fold), 둘 다 스타일 색 누적. 오른쪽 숫자 = 수익률. 줄 순서 = 기여 내림차순
+ax3w = fig.add_axes([0.20, 0.07, 0.09, 0.35]); ax3 = fig.add_axes([0.30, 0.07, 0.09, 0.35])
+contrib_chart(ax3w, [f"{t_}  {n_[:15]}" for t_, n_ in zip(ss_.tk, ss_.nm)], list(ss_.w * 1e4), None, split_after=len(ts_), fs=FS, vfs=5.6, xlabel="비중 (bp)", lim_k=1.1,
               stacks=[{k: v * 1e4 for k, v in d.items()} for d in ss_.wst], order=ST_ORDER)
-right_notes(ax3w, [f"{r_*100:+6.1f}%" for r_ in ss_.r], f"{PERIOD} 수익률", fs=FS, footer="기여 내림차순")
+contrib_chart(ax3, None, list(ss_.c * 1e4), None, split_after=len(ts_), fs=FS, vfs=5.6,
+              stacks=[{k: v * 1e4 for k, v in d.items()} for d in ss_.cst], order=ST_ORDER, lim_k=1.1, fold=True)
+right_notes(ax3, [f"{r_*100:+6.1f}%" for r_ in ss_.r], f"{PERIOD} 수익률", fs=FS, footer="기여 내림차순")
 
 # ⑤ 베팅 종목 — 현재 북 배포 비중 기준 롱 상위 / 숏 상위 (아래 오른쪽, 위아래로)
 cur_ids = {id(x) for x in D["stocks"]}
@@ -382,7 +381,7 @@ def _fit_pair(a, b, c0, c1, gap=0.010):
 
 
 _fit_x(ax1, LM, CL)
-_fit_pair(ax2, ax2w, CR, RM); _fit_pair(ax3, ax3w, LM, CL); _fit_pair(axb, axbc, CR, RM)
+_fit_pair(ax2w, ax2, CR, RM); _fit_pair(ax3w, ax3, LM, CL); _fit_pair(axb, axbc, CR, RM)
 fig.canvas.draw(); _x0, _, _x1, _ = _bb([axp]); _p = axp.get_position()
 axp.set_position([_p.x0 + (LM - _x0) + max(0.0, ((CL - LM) - (_x1 - _x0)) / 2), _p.y0, _p.width, _p.height])   # 도넛: 왼쪽 칸 가운데 (넘치면 왼쪽 여백 기준)
 out_dir = m.OUTPUT_DIR / D["book_date"] / "mtd_pdf"; out_dir.mkdir(parents=True, exist_ok=True)
