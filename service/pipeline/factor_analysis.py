@@ -279,9 +279,11 @@ def calculate_factor_stats_batch(
     # [2] NaN 제거 + batch lag (전체에서 한번에 — 팩터별보다 빠름)
     df = merged_data.dropna(subset=["val", "M_RETURN"]).copy()
     df["val_lagged"] = df.groupby(["gvkeyiid", "factorAbbreviation"])["val"].shift(1)
-    df = df.dropna(subset=["val_lagged"]).drop(columns=["val"]).reset_index(drop=True)
+    df = df.dropna(subset=["val_lagged"])
+    # 창 필터를 복사 전에: 전체 이력 reset_index 복사가 MXWO 에서 OOM (2026-11-03)
     if stats_start is not None:
-        df = df[df["ddt"] >= stats_start].reset_index(drop=True)
+        df = df[df["ddt"] >= stats_start]
+    df = df.drop(columns=["val"]).reset_index(drop=True)
 
     # [3] History 체크 (배치)
     date_counts = df.groupby("factorAbbreviation")["ddt"].nunique()
