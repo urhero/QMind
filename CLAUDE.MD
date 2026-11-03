@@ -68,6 +68,6 @@
 - **성능:** vectorized 연산 유지, 루프 도입 금지 선호
 - **OOS 오염 주의:** Walk-Forward 엔진에서 IS 규칙(dropped_sectors, label_rules)을 전체 데이터에 적용할 때 `filter_and_label_factors()`를 재실행하면 OOS look-ahead bias 발생. 반드시 `rule_bundle`의 IS 전용 규칙을 직접 매핑할 것
 - **production parity 단일 출처:** 선정(절단/클러스터 dedup/히스테리시스)은 `service/factor/selection.py:select_factors()`, 가중 파라미터 추출은 `optimization.py:weight_kwargs_from()` — mp(`universe.py`)와 엔진(`walk_forward_engine.py`)이 같은 함수를 호출한다. 선정·가중 규칙을 바꿀 땐 이 함수만 고치고 두 경로에 따로 손대지 말 것. backtest CLI 의 `--top-factors` 등은 미지정 시 config 를 따른다
-- **운용 북 = 백테스트 (2026-11-02):** 기준일 T 북은 val(T) 순위(`label_book_at_date`), 선정 입력 비용은 `selection_cost_bps` 공유. `filtered_data` 의 T 행(val(T-1) 순위)을 북에 쓰지 말 것. 선정·가중·라벨을 바꾸면 "mp 북 x 다음 달 수익 = 백테스트 수익"을 대조한다 (`docs/experiments/mp_book_lag_fix_20261102.md`)
+- **운용 북 = 백테스트 (2026-11-02):** 기준일 T 북은 val(T) 순위(`label_book_at_date`), 선정 입력 비용은 `selection_cost_bps` 공유. `filtered_data` 의 T 행(val(T-1) 순위)을 북에 쓰지 말 것. 롤링 IS 는 규칙만 창 안 lag 로 학습하고 수익률 입력은 전체 lag 프레임의 창 구간(`label_window_frames`). 선정·가중·라벨을 바꾸면 "mp 북 x 다음 달 수익 = 백테스트 수익"을 대조한다 (`docs/experiments/mp_book_lag_fix_20261102.md`)
 - **git stash 금지 (스테이징 보존):** 이 워크트리는 스테이징된 작업이 남아 있는 경우가 많다. `git stash`/`pop` 은 인덱스를 풀어버리므로(2026-09-16 사고, `git read-tree <stash>^2` 로 복구) 변경 전 비교는 scratchpad 복사본이나 `git show :path` 로 할 것
 - **cp949 호환:** Windows Rich 콘솔 출력에서 em dash, 화살표 등 유니코드 특수문자 사용 금지. ASCII 대체 사용 (`->`, `-`, `~=`)

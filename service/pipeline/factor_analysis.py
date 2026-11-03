@@ -176,6 +176,40 @@ def _assign_quantile(fdf: pd.DataFrame, test_mode: bool, min_sector_stocks: int)
     return fdf.drop(columns=["rank", "percentile", "val_lagged"])
 
 
+def _map_learned_rules(fdf: pd.DataFrame, dropped: list[str], labeled: pd.DataFrame) -> pd.DataFrame:
+    """학습 결과(제거 섹터, 분위별 라벨)를 5분위 프레임에 그대로 매핑한다 (재학습 아님)."""
+    fdf = fdf[~fdf["sec"].isin(dropped)].copy()
+    fdf["label"] = fdf["quantile"].map(labeled.groupby("quantile", observed=False)["label"].first().to_dict())
+    return fdf.dropna(subset=["label"])
+
+
+def label_window_frames(
+    full_data: pd.DataFrame,
+    window_start,
+    kept_abbrs: list[str],
+    dropped_sec: list[list[str]],
+    filtered_data: list[pd.DataFrame],
+    factor_abbr_list: list[str],
+    orders: list[int],
+    test_mode: bool = False,
+    min_sector_stocks: int = 10,
+) -> list[pd.DataFrame]:
+    """롤링 IS 수익률 프레임: 전체 이력에서 lag 를 잡고 창(window_start~)만 순위·라벨을 매긴다 (2026-11-02).
+
+    엔진은 규칙만 창 안에서 학습하고, 선정·가중 입력 수익률은 전체 lag 프레임에 규칙을 매핑해 창으로 자른다.
+    창 안에서 lag 하면 직전 값이 창 밖인 종목(재편입, 값 공백)이 그 달 빠져 같은 섹터 다른 종목의 순위까지 바뀐다.
+    """
+    stats = calculate_factor_stats_batch(
+        full_data, factor_abbr_list, orders, test_mode=test_mode,
+        min_sector_stocks=min_sector_stocks, stats_start=window_start,
+    )
+    stats_by_abbr = dict(zip(factor_abbr_list, stats))
+    return [
+        _map_learned_rules(stats_by_abbr[abbr][3], dropped, labeled)
+        for abbr, dropped, labeled in zip(kept_abbrs, dropped_sec, filtered_data)
+    ]
+
+
 def label_book_at_date(
     merged_data: pd.DataFrame,
     kept_abbrs: list[str],
@@ -208,10 +242,7 @@ def label_book_at_date(
         # [4] 과 같은 방향 통일: factorOrder=0(높을수록 좋음)은 부호 플립
         fdf["val_lagged"] = fdf["val"] if bool(order_map.get(abbr, 1)) else -fdf["val"]
         fdf = _assign_quantile(fdf.drop(columns="val"), test_mode, min_sector_stocks)
-        fdf = fdf[~fdf["sec"].isin(dropped)].copy()
-        label_map = labeled.groupby("quantile", observed=False)["label"].first().to_dict()
-        fdf["label"] = fdf["quantile"].map(label_map)
-        book_frames.append(fdf.dropna(subset=["label"]))
+        book_frames.append(_map_learned_rules(fdf, dropped, labeled))
     return book_frames
 
 
@@ -222,6 +253,7 @@ def calculate_factor_stats_batch(
     test_mode: bool = False,
     min_sector_stocks: int = 10,
     min_coverage_pct: float = 0.0,
+    stats_start=None,
 ) -> list[tuple]:
     """모든 팩터의 5분위 분석을 하이브리드 방식으로 처리한다.
 
@@ -234,6 +266,7 @@ def calculate_factor_stats_batch(
         orders: 팩터별 정렬 방향 (factorOrder. 0=높을수록 좋음 -> 부호 플립,
             1=낮을수록 좋음 -> 그대로. 통일 후 ascending rank 1 = Q1 = 좋은 종목)
         test_mode: True이면 최소 종목수 검증 생략
+        stats_start: 지정하면 lag 는 전체 입력에서 잡고 순위·집계는 이 날짜부터만 한다
 
     Returns:
         팩터별 5분위 분석 결과 리스트
@@ -247,6 +280,8 @@ def calculate_factor_stats_batch(
     df = merged_data.dropna(subset=["val", "M_RETURN"]).copy()
     df["val_lagged"] = df.groupby(["gvkeyiid", "factorAbbreviation"])["val"].shift(1)
     df = df.dropna(subset=["val_lagged"]).drop(columns=["val"]).reset_index(drop=True)
+    if stats_start is not None:
+        df = df[df["ddt"] >= stats_start].reset_index(drop=True)
 
     # [3] History 체크 (배치)
     date_counts = df.groupby("factorAbbreviation")["ddt"].nunique()

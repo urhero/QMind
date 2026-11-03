@@ -102,6 +102,8 @@ graph TD
 | `[2]` | `factor_stats` | 팩터별 분석 결과 (sector_return, spread, merged_df) | `list[tuple]` | `calculate_factor_stats_batch` |
 | `[3]` | `filtered_data` | 섹터 필터 + label 부여된 종목 데이터 | `List[pd.DataFrame]` | `filter_and_label_factors` |
 | `[3]` | `kept_abbrs/names/styles` | 유지된 팩터 메타 리스트 | `List[str]` | `filter_and_label_factors` |
+| `[3]` | `book_frames` | 기준일 값 val(T) 순위로 규칙을 매핑한 배포 북 라벨 | `List[pd.DataFrame]` | `label_book_at_date` |
+| `[3]` | `is_frames` | 수익률 입력 라벨. 롤링 IS 는 전체 lag 프레임의 창 구간, 아니면 `filtered_data` | `List[pd.DataFrame]` | `label_window_frames` |
 | `[4]` | `return_matrix` | 월간 net return 매트릭스 (선정 팩터, 첫 행 기준점 0) | `pd.DataFrame` | `evaluate_universe` |
 | `[4]` | `meta` | 팩터 성과/랭크 테이블 (rank_score=t-stat, cagr, newey_west_tstat, rank_style, rank_total) | `pd.DataFrame` | `evaluate_universe` |
 | `[6]` | `sim_result` | (best_stats, weights_tbl) -- 최적 비중 결과 | `Tuple` | `optimize_constrained_weights` |

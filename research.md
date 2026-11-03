@@ -229,8 +229,10 @@ for factor_abbr in factor_abbr_list:
 **sort_order 처리**: `sort_order=0`(낮을수록 좋은 팩터)이면 `val_lagged *= -1`로 방향 통일. 이후 모든 rank는 ascending=True.
 
 **롤링 IS 윈도우** (`is_window_months`, MXWO 기본 48, 2026-07-28 채택): mp `run()`이
-`slice_recent_months()`로 merged 데이터를 최근 N개월+lag 기저 1개월로 잘라 규칙
-학습·선정·ERC 가중을 레짐 적응형으로 만든다. walk-forward 엔진은 동일 의미의
+`slice_recent_months()`로 merged 데이터를 최근 N개월+lag 기저 1개월로 잘라 규칙을
+학습하고, 선정·ERC 가중 입력 수익률은 `label_window_frames()`로 만든다 (lag 는 전체 이력에서
+잡고 창 구간만 순위·라벨, 2026-11-02). 창 안에서 lag 하면 직전 값이 창 밖인 종목이 그 달 빠져
+같은 섹터 순위까지 바뀐다. walk-forward 엔진은 동일 의미의
 `is_window_months`를 Tier 1(merged_is)·Tier 2(ret_df_is) 슬라이스에 적용 (CLI
 `--is-window-months`, 미지정 시 config, 0=expanding 강제). **use_cluster_dedup 는
 MXWO 에서 off** — 롤링 IS 의 출렁이는 rank_score 분포에서 winner_median 의 전역
@@ -392,8 +394,9 @@ val(T) 순위여야 같은 전략이다. 구 코드는 `filtered_data` 의 T 행
 
 **mp 와 엔진이 같아지는 조건**: (1) 규칙 학습 주기: mp 는 매달, 엔진은 `--factor-rebal-months` (기본 6) (2) 위 북 라벨 시점
 (3) 선정·가중 입력 비용 `optimization.selection_cost_bps` (mp·엔진 공유, 구 mp 는 종목비용 전액) (4) IS 마지막 달 비용: 기준일 북을 다음 달 행으로 붙여 계상
-(`model_portfolio.run`, 수익이 없는 다음 달 행은 `evaluate_universe` 가 잘라냄). expanding IS 는 이것으로 일치한다 (비중 차이 < 0.0004%p). 롤링 IS(MXWO)는 잔차가 남고,
-엔진 행 t 의 유니버스가 월말 t 구성인 차이도 남는다 ([`mp_book_lag_fix_20261102.md`](docs/experiments/mp_book_lag_fix_20261102.md)).
+(`model_portfolio.run`, 수익이 없는 다음 달 행은 `evaluate_universe` 가 잘라냄) (5) 롤링 IS 수익률 입력: 규칙만 창 안 lag 로 학습, 수익률은 전체 lag 프레임의 창 구간 (`label_window_frames`).
+이것으로 expanding IS 는 일치하고 (비중 차이 < 0.0004%p), MXWO 는 100개월 중 94개월이 수익 차이 0.01bp 미만이다. 남는 6개월 중 5개월은 엔진이 기준일 뒤 정보(다음 달 유니버스, T+2 NaN)를 쓴 차이라 운용에서 재현할 수 없고,
+1개월은 엔진의 창 이전 NaN 팩터 탈락이다. 엔진 행 t 의 유니버스가 월말 t 구성인 차이와, 엔진 행의 목표 gross 가 보유 달 기준(운용은 기준일 기준)인 차이도 남는다 ([`mp_book_lag_fix_20261102.md`](docs/experiments/mp_book_lag_fix_20261102.md)).
 
 **종목별 비중 계산**:
 ```python

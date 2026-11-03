@@ -21,6 +21,8 @@ from service.pipeline.factor_analysis import (
     calculate_factor_stats_batch,
     filter_and_label_factors,
     label_book_at_date,
+    label_window_frames,
+    slice_recent_months,
 )
 
 
@@ -71,6 +73,29 @@ def test_book_labels_use_as_of_values() -> None:
     assert (book["ddt"] == T).all()
     assert old["G9"] == 1 and old["G0"] == -1      # 전월 값 순위: G9 롱
     assert new["G0"] == 1 and new["G9"] == -1      # 기준일 값 순위: 뒤집혀 G0 롱
+
+
+def test_window_labels_keep_lag_from_before_window() -> None:
+    """롤링 IS 수익률 프레임은 창 밖 값도 lag 로 쓴다 (엔진과 같음). 창 안에서 lag 하면 재편입 종목이 빠진다."""
+    dates = pd.date_range("2024-01-31", periods=8, freq="ME")
+    rows = []
+    for m, d in enumerate(dates):
+        for s in range(10):
+            if s == 9 and m in (2, 3, 4):   # G9 는 3달 쉬고 창 첫 달(m=5) 에 돌아온다
+                continue
+            rows.append({"gvkeyiid": f"G{s}", "ddt": d, "sec": "S1", "val": float(s),
+                         "M_RETURN": 0.01 * s, "factorAbbreviation": "FA", "ticker": f"T{s}", "isin": f"I{s}"})
+    full = pd.DataFrame(rows)
+    window = slice_recent_months(full, 3)                 # m=4 기저 + m=5~7
+    start = dates[5]
+
+    stats = calculate_factor_stats_batch(window, ["FA"], [0], test_mode=True)
+    kept, _, _, _, dropped, labeled = filter_and_label_factors(["FA"], ["FA"], ["S"], stats)
+    assert "G9" not in set(labeled[0].loc[labeled[0]["ddt"] == start, "gvkeyiid"])   # 창 안 lag: 탈락
+
+    out = label_window_frames(full, start, kept, dropped, labeled, ["FA"], [0], test_mode=True)[0]
+    assert out["ddt"].min() == start                       # 기저 달은 들어오지 않는다
+    assert out.loc[(out["ddt"] == start) & (out["gvkeyiid"] == "G9"), "label"].iloc[0] == 1   # 전체 lag: 포함
 
 
 class TestCalculateFactorStatsBatch:
