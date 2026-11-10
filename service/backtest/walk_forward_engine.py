@@ -144,6 +144,7 @@ def _apply_rules_and_aggregate(
     pipeline: ModelPortfolioPipeline,
     out_frames: dict | None = None,
     horizon=None,
+    start=None,
 ) -> pd.DataFrame:
     """IS에서 학습한 규칙을 (사전 계산된) 전체 데이터 5분위 통계에 적용하고 팩터 수익률을 사전 계산한다.
 
@@ -151,6 +152,11 @@ def _apply_rules_and_aggregate(
     라벨 프레임을 ddt <= horizon 으로 잘라 미래 구간 계산을 생략한다 (2026-09-16).
     부수 효과로 "미래 월의 롱/숏 소실 -> 팩터 전체 탈락"(aggregate 의 NaN 열 제거)이
     현재 시점 선정에 영향을 주던 look-ahead 도 사라진다.
+
+    start: 롤링 IS 창의 첫 달. 지정 시 ddt >= start 만 집계한다 (2026-11-10). 창 밖 수익률은
+    선정·가중·OOS 어디에도 쓰이지 않고, 수익률·비용은 행 단위라 창 구간 값은 같다 (합산 순서
+    차이 1e-16 수준). mp(label_window_frames) 와 같은 구간이 되어, 창 밖 과거 달의 NaN 때문에
+    엔진만 후보에서 빼던 팩터가 없어진다.
 
     Tier 1 핵심: 전체 데이터의 횡단면 5분위 랭킹(안전)에 IS 전용 규칙
     (dropped_sectors, label_rules)을 적용하여 aggregate_factor_returns를
@@ -196,6 +202,11 @@ def _apply_rules_and_aggregate(
             continue
 
         raw_df = stats[3]  # merged_df (quantile 컬럼 포함, 횡단면 안전)
+        # 기간 필터를 복사 전에 (전체 이력 복사 생략)
+        if horizon is not None:
+            raw_df = raw_df[raw_df["ddt"] <= horizon]
+        if start is not None:
+            raw_df = raw_df[raw_df["ddt"] >= start]
 
         # IS에서 학습한 dropped_sectors 적용
         dropped = dropped_sectors.get(abbr, [])
@@ -214,8 +225,6 @@ def _apply_rules_and_aggregate(
 
         raw_clean["label"] = raw_clean["quantile"].map(labels)
         merged = raw_clean.dropna(subset=["label"])
-        if horizon is not None:
-            merged = merged[merged["ddt"] <= horizon]
 
         if merged.empty:
             continue
@@ -442,6 +451,7 @@ class WalkForwardEngine:
                 precomputed_ret_df = _apply_rules_and_aggregate(
                     factor_stats_full, factor_abbr_list_full, cached_rule_bundle, pipeline,
                     out_frames=stock_frames, horizon=pd.Timestamp(all_dates[horizon_idx]),
+                    start=None if is_start_date is None else pd.Timestamp(is_start_date),
                 )
 
                 if precomputed_ret_df.empty:
@@ -574,6 +584,12 @@ class WalkForwardEngine:
         # 성과 산출물이 아니라 상관 구조 참고 데이터. 테스트 모드는 생략)
         if not test_file and precomputed_ret_df is not None and not precomputed_ret_df.empty:
             try:
+                if self.is_window_months:
+                    # 루프 안 행렬은 창 구간뿐이라, 저장용만 마지막 규칙으로 전체 이력을 한 번 더 집계
+                    precomputed_ret_df = _apply_rules_and_aggregate(
+                        factor_stats_full, factor_abbr_list_full, cached_rule_bundle, pipeline)
+                    precomputed_ret_df.loc[precomputed_ret_df.index[0]] = 0.0
+                    precomputed_ret_df = precomputed_ret_df.sort_index()
                 precomputed_ret_df.to_csv(dated(
                     OUTPUT_DIR / "factor_returns_matrix.csv",
                     precomputed_ret_df.index.max()))

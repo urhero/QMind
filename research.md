@@ -373,8 +373,9 @@ per-factor:
    순서 교정, main/MXCN1A 와 동일. 구 캡-후-틸트는 EQ 26.1% 초과 사례)
 3. 스타일 캡 적용:
    a. 스타일별 비중 합계 계산
-   b. 캡(MXWO 20% / MXCN1A 25%) 초과 스타일: 비례 축소 (cap / share)
-   c. 정규화 (합=1) / 수렴까지 반복 (최대 10회)
+   b. 캡(MXWO 20% / MXCN1A 25%) 초과 스타일: 캡에 고정 (스타일 안 비율 유지)
+   c. 남은 몫을 나머지 스타일에 현재 비율대로 배분 / 새로 넘는 스타일이 없을 때까지 반복
+      (water-filling, 2026-11-10 - 캡을 정확히 지킨다)
 4. CAGR/MDD 계산 (기록용)
 ```
 
@@ -631,7 +632,7 @@ main.py
 
 #### 4.1.3 스타일 캡 (MXCN1A 25% / MXWO 20%)
 - **위치**: `config.py:PIPELINE_PARAMS["style_cap"]` → `optimization.py` 파라미터로 전달
-- **이유**: 프로덕션 규제 요건(상한 25%). 단일 스타일 집중 위험 통제. MXWO 는 2026-10-21 20% 로 강화(운용 동등 재검증, 0.15~0.20 고원). 축소·재정규화 10회 반복 한계로 캡에 닿는 스타일이 4개 이상인 달은 최대 ~0.8%p 초과(백테스트 100개월 중 21개월, 25% 이내)
+- **이유**: 프로덕션 규제 요건(상한 25%). 단일 스타일 집중 위험 통제. MXWO 는 2026-10-21 20% 로 강화(운용 동등 재검증, 0.15~0.20 고원). 재분배는 water-filling 이라 캡을 정확히 지킨다 (2026-11-10; 구 구현은 미수렴으로 최대 ~0.8%p 초과, `docs/experiments/style_cap_waterfill_20261110.md`)
 
 #### 4.1.4 거래비용 10bp (MXWO)
 - **위치**: `config.py:PIPELINE_PARAMS["transaction_cost_bps"]` → `factor_returns.aggregate_factor_returns()` → `weight_construction.py` 파라미터로 전달
@@ -765,12 +766,14 @@ turnover = sum |new_weight - drifted_weight|   (편입/편출 포함: 미보유 
 
 ### 스타일 캡 재분배 (`optimization._equal_weight_allocation`)
 ```
-repeat (최대 10회):
-    for 각 스타일 s:
-        if style_weight(s) > cap:  w[s 소속 팩터] *= cap / style_weight(s)   # 위반 스타일 비례 축소
-    w /= w.sum()                                                             # 전체 재정규화 (미달 스타일로 자연 재분배)
-    if 전 스타일 <= cap: break
-# 10회 내 미수렴 시 위반 스타일 경고 로그만 남기고 진행
+capped = {}                                        # 캡에 고정한 스타일 (늘기만 함)
+repeat (최대 스타일 수만큼):
+    over = {s not in capped : style_weight(s) > cap}
+    if over 없음: break
+    capped |= over
+    capped 스타일:  w[s 소속 팩터] *= cap / style_weight(s)                  # 캡에 고정 (스타일 안 비율 유지)
+    나머지 스타일:  w *= (1 - |capped| x cap) / sum(나머지 style_weight)     # 남은 몫을 현재 비율대로
+w /= w.sum()
 # n_styles x cap < 100% 면 제약 자체가 infeasible -> 경고 후 위반 상태로 진행
 ```
 
@@ -881,6 +884,11 @@ OOS 구간에서 3개 포트폴리오의 성과(CAGR, MDD)를 동시 비교:
 | C > B > A | 정상 -- 필터링과 style_cap 제약 모두 가치 창출 |
 | B > C > A | CONSTRAINT_DRAG -- style_cap 제약이 OOS CAGR을 깎음. 과적합 아님(학습 가중치 없는 결정론적 제약): 수익 일부를 내주고 변동성/MDD를 낮추는 트레이드오프. 구 라벨 `OPTIMIZATION_OVERFIT` |
 | A > B | FILTER_OVERFIT -- rank_score 기반 Top-50 선정 자체가 과거 우연 |
+water-filling (2026-11-10). 구 구현은 "넘은 스타일 축소 -> 전체 재정규화"를 10회 반복했는데, 재정규화가
+방금 캡에 맞춘 스타일까지 다시 키워 캡에 닿는 스타일이 여럿인 달에 수렴하지 못했다 (MXWO 6개월 주기
+백테스트 101개월 중 54개월 초과, 최대 0.79%p). 지금은 고정한 스타일을 다시 건드리지 않으므로 캡이
+가능한 구성이면 항상 정확히 맞는다. 캡이 걸리지 않는 달의 비중은 구 구현과 같다.
+
 
 > C 의 가중은 IS cov 기반 ERC(학습 파라미터 없음, 대각 수축 0.2) + 결정론적 style_cap 재분배다
 > (종목단 공분산/MC 최적화는 커밋 `8dfb64e`에서 제거됨).
@@ -954,6 +962,42 @@ python main.py backtest <start> <end> [옵션]
 - `optimization_mode = "erc"` (cov 48M + 대각수축 0.2 + Spinu CCD; 수축 0.2는 2026-08-07 전구간 스윕 채택 — mxwo_sharpe_ladder_20260729.md 7차)
 - `ts_mom_window = 3`, `ts_mom_scale = 0.2` (TS 모멘텀 틸트; 창 4→3 2026-08-07, 감쇠 0.5→0.2 2026-08-10 전구간 스윕 — mxwo_sharpe_ladder_20260729.md 8차)
 - **배포 기준 성과 회계** (2026-08-19): `backtest` 가 종목단 재구성을 함께 수행해 `stock_level_series_{기준일}.csv` 산출 (월별 book_gross_before / multiplier / long·short_exposure / gross·cost·tax·net_return / turnover). 구현은 `service/backtest/stock_level.py` — `stock_weights_at`(구 mp_level 전용에서 공용화) + `build_stock_series` + `series_metrics`. 엔진은 `_apply_rules_and_aggregate(out_frames=...)` 로 라벨 프레임을 받아 **프레임이 살아있는 루프 안에서** 월별 종목 순비중만 뽑아 축적한다 (프레임 자체는 무거워 미보관). 통합 덕에 mp_level 별도 실행(20분, 워크포워드 중복)이 불필요 — 백테스트 15.6분 -> 약 21분.
+### 6.2.3 롤링 IS 창 구간만 집계 (2026-11-10)
+
+6. **Tier 1 창 시작 절단** (`_apply_rules_and_aggregate(start=...)`): 롤링 IS(`is_window_months`)에서는 창 밖 과거 수익률이 선정·가중·OOS 어디에도 쓰이지 않는다. 라벨 프레임을 `ddt >= IS 시작월` 로 잘라 집계한다 (기간 필터를 프레임 복사 전에 적용). expanding(MXCN1A)은 `start=None` 이라 경로가 같다.
+   - mp(`label_window_frames`)는 이미 창 구간만 집계하므로 후보 집합이 같아진다. 구 엔진은 창 밖 과거 달에 NaN 이 있는 팩터(예: `stdRR36M`)를 `dropna(axis=1)` 로 통째로 뺐고 mp 는 후보로 두었다.
+   - 저장용 `factor_returns_matrix` 는 대시보드 상관 국면 차트가 전체 이력을 쓰므로, 실행 끝에 마지막 규칙으로 전체 이력을 한 번 더 집계한다 (저장 파일 동일).
+
+실측 (MXWO, 6개월 주기, 기준일 2026-10-31, OOS 101개월, 산출물은 scratch 로 격리):
+
+| | 실행 시간 | factor-level Sharpe | 배포 기준 Sharpe / MDD | 선정 집합 변경 월 |
+|---|---|---|---|---|
+| 변경 전 | 899초 | 0.631 | 0.547 / -1.94% | - |
+| 변경 후 | 851초 | 0.631 | 0.547 / -1.94% | 0 / 101 |
+
+- 월별 수익률 차이 최대 2.4e-18, 배포 기준 순수익·저장 행렬은 완전 동일. 후보로 돌아온 팩터는 순위가 낮아 한 번도 선정되지 않았다.
+- 단축은 5% 에 그친다. 절감은 이력이 창보다 길어지는 후반 회차에만 생기고(마지막 회차 집계 9.9초 -> 3.4초), 전체 이력 저장용 집계 1회가 더해진다. 남은 병목은 IS 창 5분위 재계산(회차당 23~30초)이다.
+
+### 6.2.4 편출 종목의 편출 월 수익 누락 - 영향 실측 (2026-11-10)
+
+엔진 북의 t 월 행은 "val(t-1) 순위 x M_RETURN(t)" 이고 t 월에 데이터가 있는 종목만 담는다. t-1 말에는
+있었지만 t 월에 지수에서 빠진 종목은 실제 북이라면 들고 있었을 텐데 백테스트에서는 그 달 수익이 빠진다.
+일별 가격 view(`v_px_d`, `db/daily_read.daily_prices`)로 편출 월 달러 가격수익률을 구해 영향을 쟀다
+(잔류 표본 검산: M_RETURN 과 상관 0.9999, 98.6% 가 0.5%p 이내).
+
+| | MXWO (100개월) | MXCN1A (165개월) |
+|---|---|---|
+| 편출 건수 (월평균) | 1,296 (10.6) | 1,498 (15.8) |
+| 편출 월 수익, 유니버스 평균 대비 | -1.48%p (t -3.5) | -0.37%p (t -1.3) |
+| 북 gross 중 편출 종목 (롱 / 숏, 월평균) | 0.23% / 0.53% | 0.39% / 0.84% |
+| 배포 기준 보정 (연) | +0.3bp (대응 t 0.13) | -1.2bp (대응 t -0.67) |
+| Sharpe 현행 -> 보정 | 0.592 -> 0.594 | 0.700 -> 0.685 |
+
+편출 종목은 부진하지만(MXWO) 롱과 숏 양쪽에 있어 서로 상쇄된다 (롱 -0.44bp, 숏 +0.44bp/월, 배수 전).
+**영향이 오차 범위라 행 구조(val(t-1) + t 월 수익)를 바꾸지 않는다.** 보정은 근사다 - 편출 종목의 비중을
+엔진의 직전 달 북(한 달 전 라벨)에서 가져왔고, 같은 편 북 평균 수익과의 차이만 더했다. 비용은 뺐다.
+Sharpe 는 첫 달을 뺀 구간 값이라 `series_metrics` 수치와 다르다.
+
   - **목표 노출 고정**: `mp_target_gross` 설정 시 매월 `배수=target/gross`. 실측 book gross 는 **70.3%~111.5%** 로 넓게 변동(2시점 스냅샷만 보면 85~90%로 좁아 보이나 전 구간은 다름) -> 고정 배수는 노출·TE 를 그만큼 흔든다. 적용 배수 범위 0.359~0.569 (중앙 0.448).
   - ⚠ **월별 목표 고정은 상수배가 아니다**: netting 이 심한 달을 키우고 덜한 달을 줄이므로 수익 경로가 바뀐다 -> Sharpe 도 이동(0.739 -> 0.734). 고정 배수였다면 불변. 테스트로 이 구분을 고정(`test_stock_level.py`).
   - **TE**: 시장중립 오버레이 -> 액티브수익=오버레이수익 -> `TE = 월 net_return std x sqrt(12)`. 벤치마크 비중 데이터 불필요 (파케이에 `MXWO_WGT` 없음). 실현(ex-post) 기준.

@@ -107,7 +107,7 @@ def style_cap_used(history_dir: Path, snap: str, default: float) -> float:
 
     config 의 style_cap 은 나중에 바뀔 수 있어(2026-10-21 MXWO 0.25 -> 0.20) 과거 북을 그릴 때
     현재 설정값을 쓰면 캡 선이 틀린다. 캡에 눌린(캡 후 < 캡 전) 스타일의 캡 후 합 최대값을 쓴다.
-    캡 보정은 최대 10회 반복이라 미수렴 시 캡을 0.x%p 넘기므로 5%p 격자로 반올림한다.
+    2026-11-10 이전 북은 캡 보정 미수렴으로 캡을 0.x%p 넘긴 달이 있어 5%p 격자로 반올림한다.
     이력이 없거나 눌린 스타일이 없으면 default.
     """
     path = history_dir / f"style_cap_effect_{snap}.csv"

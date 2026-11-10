@@ -40,20 +40,30 @@ def _redistribute_to_cap(
     style_cap: float,
     tol: float,
 ) -> np.ndarray:
-    """스타일 합이 cap 을 넘지 않도록 비례 축소 + 재정규화 (수렴까지 최대 10회).
+    """스타일 합이 cap 을 넘지 않도록 water-filling 재분배 (2026-11-10).
 
-    연산 순서는 기존 인라인 루프와 동일 (byte 보존).
+    캡을 넘은 스타일은 캡에 고정하고(스타일 안 비율 유지), 남은 몫 1 - 고정합 을 나머지
+    스타일에 현재 비율대로 나눈다. 그 결과 새로 넘는 스타일이 생기면 그것도 고정하고 반복 -
+    고정 집합은 늘기만 하므로 스타일 수 이내에 끝난다. 구 구현(축소 후 전체 재정규화 10회)은
+    재정규화가 고정한 스타일까지 다시 키워 MXWO 101개월 중 54개월에서 캡을 최대 0.79%p 넘겼다.
+    캡이 걸리지 않는 달의 값은 구 구현과 같다.
     """
-    for _ in range(10):
-        for s in uniq_styles:
-            mask_s = styles_arr == s
-            style_w = x[mask_s].sum()
-            if style_w > style_cap + tol:
-                x[mask_s] *= style_cap / style_w
-        x /= x.sum()
-        if all(x[styles_arr == s].sum() <= style_cap + tol for s in uniq_styles):
+    masks = [styles_arr == s for s in uniq_styles]
+    capped = np.zeros(len(masks), dtype=bool)
+    for _ in masks:
+        sw = np.array([x[m].sum() for m in masks], dtype=np.float64)
+        over = (sw > style_cap + tol) & ~capped
+        if not over.any():
             break
-    # 10회 내 미수렴 시 위반 스타일 보고 (float32 오차 허용 1e-6)
+        capped |= over
+        free_sum = sw[~capped].sum()
+        if free_sum <= 0:  # 전 스타일 고정 = 캡 자체가 불가능 (n_styles x cap < 1)
+            break
+        free_scale = (1.0 - capped.sum() * style_cap) / free_sum
+        for m, c, s_w in zip(masks, capped, sw):
+            x[m] *= style_cap / s_w if c else free_scale
+    x /= x.sum()
+    # 위반 스타일 보고 - 캡이 불가능한 구성에서만 남는다 (float32 오차 허용 1e-6)
     violations = {
         s: float(x[styles_arr == s].sum())
         for s in uniq_styles if x[styles_arr == s].sum() > style_cap + 1e-6

@@ -178,6 +178,24 @@ class TestOOSPurityContract:
         ret_df = _apply_rules_and_aggregate(stats_full, abbrs, bundle, pipeline)
         assert not ret_df.empty
 
+    def test_start_truncates_without_changing_window_returns(self, pipeline):
+        """롤링 IS: start 를 주면 그 달부터만 집계하고, 창 구간 수익률은 전체 집계와 같다.
+
+        첫 행은 기준점(수익 0, 호출부가 0 으로 덮음)이라 비교에서 뺀다.
+        """
+        raw, mret = _build_synthetic()
+        is_raw, is_mret = slice_data_by_date(raw, mret, IS_END)
+        bundle = _run_rule_learning(is_raw, is_mret, pipeline, test_file="syn")
+        stats_full, abbrs = _precompute_full_stats(pipeline, raw, mret)
+
+        full = _apply_rules_and_aggregate(stats_full, abbrs, bundle, pipeline)
+        start = pd.Timestamp("2024-05-31")
+        win = _apply_rules_and_aggregate(stats_full, abbrs, bundle, pipeline, start=start)
+
+        assert win.index.min() == start
+        assert win.index.max() == full.index.max()
+        pd.testing.assert_frame_equal(win.iloc[1:], full.loc[win.index[1:]], atol=1e-12)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

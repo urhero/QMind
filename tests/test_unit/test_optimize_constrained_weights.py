@@ -285,6 +285,22 @@ class TestStyleCapFeasibilityGuard:
             )
         assert not [r for r in caplog.records if "style_cap" in r.message]
 
+    def test_cap_exact_when_redistribution_cascades(self) -> None:
+        """재분배로 새 스타일이 캡을 넘는 연쇄에서도 모든 스타일이 캡 이하 (water-filling).
+
+        구 구현(축소 + 전체 재정규화 10회)은 이 입력에서 캡을 넘긴 채 끝났다.
+        """
+        from service.pipeline.optimization import _redistribute_to_cap
+        styles = np.array(["A", "A", "B", "C", "D", "E", "F"])
+        x = np.array([0.20, 0.15, 0.22, 0.19, 0.18, 0.04, 0.02], dtype=np.float32)
+        out = _redistribute_to_cap(x.copy(), styles, np.unique(styles), 0.20, 1e-12)
+        sums = {s: out[styles == s].sum() for s in np.unique(styles)}
+        assert np.isclose(out.sum(), 1.0, atol=1e-6)
+        assert max(sums.values()) <= 0.20 + 1e-6
+        # 고정된 스타일 안 비율과, 고정되지 않은 스타일 사이 비율은 유지
+        assert np.isclose(out[0] / out[1], 0.20 / 0.15, rtol=1e-5)
+        assert np.isclose(out[5] / out[6], 2.0, rtol=1e-5)
+
 
 class TestEqualRiskWeightMode:
     """equal_risk_weight 모드: IS 변동성 반비례 가중 + 스타일 캡 재분배."""
