@@ -62,6 +62,8 @@
 - **Entry Point:** `main.py` -> `service/pipeline/model_portfolio.py:run_model_portfolio_pipeline()`
 - **Backtest Entry:** `main.py` -> `service/backtest/walk_forward_engine.py:WalkForwardEngine.run()`
 - **Data I/O:** `service/download/parquet_io.py`의 `load_factor_parquet()`가 연도별 분할 parquet 자동 병합
+- **Direct Load:** `main.py direct-load` -> `db/factor_direct.py:run_direct_load()` (ClariFI 없이 `xf_target` -> `clarifi_*_afl` 형식, research.md §2.4). 기본은 대조만 하고 쓰지 않는다. `--write`(운영 테이블 append) 는 사용자 승인 후에만
+- **Daily Load (2026-11-06):** `main.py direct-load-daily` -> `db/daily_direct.py:run_direct_load_daily()` (세 지수 라인·AFL 일별 팩터 -> kb_global `univ_line_d`·`afl_value_d`, 가격은 view `v_px_d`, research.md §2.5). 작업 스케줄러 `QMind Daily Load` 12:10 이 `--write` 로 돈다. 읽기는 `db/daily_read.py` 만 거칠 것. 원천 일별 팩터는 약 22영업일 롤링이라 `afl_value_d` 행을 지우면 복구할 수 없다
 - **Test Mode:** `python main.py mp test tests/fixtures/test_data.csv` (소량 데이터 검증용, `output/{BENCHMARK}/test/` 에 `_{test stem}` 접미사로 출력)
 - **산출물 경로:** 항상 `service.paths.OUTPUT_DIR`(= `output/{BENCHMARK}/`) 사용. 루트 `output/` 하드코딩 금지. 유니버스 종속 데이터 파일은 `service.paths.UNIVERSE_DATA_DIR`(= `data/{BENCHMARK}/`) 로 조회, 공통 파일(`factor_info.csv`)만 `DATA_DIR`
 - **Flow 참조:** `docs/VARIABLE_FLOW.md`

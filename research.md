@@ -49,11 +49,13 @@ main.py (CLI)
 
 ### 1.4 진입점 (Entry Points)
 
-**CLI 4개 커맨드** (`main.py`: download / mp / backtest / viz):
+**CLI 6개 커맨드** (`main.py`: download / direct-load / direct-load-daily / mp / backtest / viz):
 
 | 커맨드 | 용도 | 호출 경로 |
 |--------|------|-----------|
 | `python main.py download <start> <end>` | SQL → parquet 다운로드 | `run_download_pipeline()` |
+| `python main.py direct-load <month_end> [--write]` | S&P 원천 → 대상 테이블 형식 빌드 + 대조 (ClariFI 대체, §2.4) | `run_direct_load()` |
+| `python main.py direct-load-daily [--write] [--end]` | 세 지수 일별 라인·AFL 팩터값 누적 (§2.5) | `run_direct_load_daily()` |
 | `python main.py viz [date] [--open]` | 기존 산출물 → HTML 대시보드 (read-only) | `build_dashboard()` |
 | `python main.py mp <start> <end>` | parquet → MP CSV 생성 | `run_model_portfolio_pipeline()` → `ModelPortfolioPipeline.run()` |
 | `python main.py mp test <file>` | 소량 데이터 테스트 모드 | 동일 경로, `test_file` 인자 활성 |
@@ -442,6 +444,111 @@ SQL Server -> `_build_pipeline_ready()` (M_RETURN 분리, factor_info merge, cat
 
 **저장 후 검증** (`download_validation.validate_parquet_coverage`): 빈 월, 팩터/종목 수 급감, M_RETURN 정합성 등 5가지
 
+### 2.4 직접 적재 (direct-load 커맨드, `db/factor_direct.py`, 2026-10-30)
+
+ClariFI SQL export 대체. ClariFI 는 `xf_target`(kb_global 과 같은 서버) 위의 GUI 라 값이 같고, 종목·필드별 프로시저 호출 대신 집합 쿼리로 읽어 한 달 수십 초로 끝난다 (ClariFI 는 718708 전 기간 88분). 대상 테이블 스키마가 그대로라 `download` 이후는 바뀌지 않는다.
+
+**흐름** (`build_month`):
+1. 대상 테이블 스캔 (heap): 라인별 마지막 등장 월 (그 달 제외), 필드 목록 (직전 월~그 달). 새 팩터는 테이블에 필드가 생겨야 따라온다.
+2. 바스켓: MSCIDB `spg_msci_wgt_Daily` 의 월말 이하 마지막 날.
+3. 라인 선택 (`select_lines`): ISIN -> `sec_idhist` item='ISIN' PIT. `security.isin` 은 전부 NULL 이라 못 쓴다. 라인이 여럿이면 (선진국 ISIN 의 약 절반) ① 테이블에 쌓여 있던 활성 라인, 그중 최근 것 (팩터 이력이 라인에 묶여 있음) ② `clarifi_sm_primary_global` option 1 규칙: 회사 소재지 지역 primary > USA > CAN > ROW ③ OTC·비활성 후순위, ISIN 나라와 맞는 접미사. 규칙만으로 MXWO 16개월 99.6%.
+   - **ISIN 이력 보강 (`backfill_isin_history`, 2026-11-17):** 미국·캐나다 상장 라인의 `sec_idhist` ISIN 은 2013-01-01 부터라 (미국 본토 라인 31,132개, 99.96% 가 CUSIP 이력이 더 이름) 그대로 쓰면 2013년 이전 MXWO 비중 약 40% 가 연결되지 않는다. 라인의 첫 ISIN 시작 전날까지 ① 첫 ISIN 이 US/CA 면 CUSIP 구간마다 국가코드 + CUSIP + Luhn 검증 숫자 (2013년 이후 실제 ISIN 65,791개 중 99.997% 일치) ② 외국 ISIN(IE·CH·PA 등 미국 상장 외국 국적) 은 첫 ISIN 시점의 CUSIP 이 이어진 구간만 첫 ISIN ③ 바스켓 ISIN 본체가 그 전 CUSIP 과 같고 검증 숫자가 맞으면 그 ISIN (국적 이전 전 BMG·KYG, 이전 전 Eaton·Aon US ISIN) ④ 그 밖에 다른 라인이 쓴 적 없는 첫 ISIN 은 열린 시작 (Tim Hortons 처럼 US 라인에 캐나다 이전 전 US ISIN 이 오는 경우도 ③ 이 받는다). 그래도 남는 바스켓 ISIN 은 ⑤ MSCI 체험분 매핑 (`msci_fallback_lines`: `MSCIConstituentIdentifier` ISIN 2005-06~2025-07 -> tradingItemId -> `ciqGvkeyIID`. 매핑 기간 조건은 걸지 않는다 - MSCI 가 새 ISIN 을 매핑 시작 며칠 전에 올려 지주사 전환 달의 맞는 라인 6건을 잃고, 기간 밖 오매핑은 전 기간 0건). 원천 ISIN 이력이 늦게 시작하는 경우 (Vivendi 2008, Nordea 2007, TE 2013) 와 원천에 없는 옛 ISIN (Anglo American 옛 GB, Covidien IE 등) 을 메운다. 마지막 수단이고, isin_hist 가 그 ISIN 을 다른 회사 것으로 알면 쓰지 않는다 (MSCI 매핑을 그대로 넣으면 시점마다 8~19개 ISIN 이 두 회사에 붙었다). MXWO 바스켓 연결률: 2005~2010 55.5~59.4% -> 100.000%, 2011~2012 -> 100%, 2003 은 MSCI 체험분 이전이라 99.71%. MSCI 로 메운 8종목은 회사·라인 모두 원천이 나중에 쓰는 라인과 같다. 같은 라인 안 기간 겹침 0. 2013 이후 달은 변화 없음 (10/31 MXWO 대조 그대로, MXCN1A 2010-12 값 137,776건 완전 일치·2012-11 라인 변화 0). ClariFI `$isin_ciq` 대체 쿼리 `db/sql/clarifi_isin_attribute.sql` 는 같은 규칙의 SQL 판 (1~2 Support 쿼리, 3~5 = ①②④, 6 = MSCI 를 같은 라인·ISIN 이 다른 부분에서 시작되기 전까지만, 다른 회사 소유 ISIN 제외). 바스켓을 모르는 속성 쿼리라 ③ 은 없고 6 이 대신한다: 2005~ 100.000%, 회사 간 충돌은 Support 쿼리 대비 2006 에 1건 (Popular Inc) 늘 뿐.
+4. 필드 (`map_fields`): 약어로 `ciqAfFactor` 매핑, `Name (1)` 류는 이름으로. 팩터당 필드 하나 (진짜 약어를 가진 최신 이름). 개명 전후 이름을 둘 다 쓰면 `download` 뒤 같은 종목-약어 행이 중복된다. 예외로 대소문자만 다른 철자(`Change of Ownership Level/ownership level - Hedge Fund (IO_ChgofIO_HF)`)는 ClariFI 처럼 같은 값으로 둘 다 쓴다 - `download` 의 `PARTITION BY fld` 가 대소문자 무시라 한 행으로 묶인다. 필드 목록은 이진 정렬로 읽는다 (기본 정렬은 두 철자를 묶어 실행마다 한쪽만 고른다). 매핑 안 되는 필드(`... - Monthly` 스타일 합성)는 건너뛰고 리포트에 남긴다 (파이프라인 미사용).
+5. 팩터값: `ciqAFValueMonthlyIntl`(2111, 2112, 2114) + `ciqAfValueMonthlyNA`(2109, 2110). PK 가 universeId, asOfDate, factorId, gvkey, iid 라 seek. 일별 테이블은 약 22영업일만 남기는 롤링 표다 (§2.5).
+6. M_RETURN (`month_returns`): `sec_dprc` prccd/ajexdi x `exrt_dly` USD, 후행 1개월, 배당 미포함. 가격 탐색 범위 제한 없음 + 환율은 그 가격일 기준이어야 일치 (거래정지 155건 포함 79,296건 오차 1e-8 미만, 월말 환율을 쓰면 최대 4% 틀림). `<지수>_WGT` = 바스켓 비중.
+7. 속성: sec = `co_hgic`+`r_giccd` PIT (없으면 'Undefined', download 가 거름), country = `company.loc`, isin = `sec_idcurrent` (없으면 바스켓 ISIN), ticker = `ciqSymbol` 활성 최신 > `sec_idcurrent` TIC > 마지막 심볼 (`pick_ticker`). `ciqGvkeyIID` 는 시점별 매핑이라 (거래 라인 551개가 시기마다 다른 종목 라인에 붙음) 심볼도 기준일에 유효한 매핑으로만 잇는다 - 안 그러면 옛 라인이 승계 회사 티커를 받는다.
+8. 조립 (`assemble_rows`): 종목 x 필드 전체 행, 값 없으면 NULL 행 (ClariFI 와 같은 형태).
+
+**가드:** 달력 월말만, 바스켓 7일 초과 지연 오류, 값 있는 종목 < 90% 또는 7일 내 가격 있는 종목 < 90% 면 오류 (`check_coverage`). 월초에 일찍 돌려 원천에 새 달이 없으면 NULL 이나 옛 가격이 쌓이는 것을 막는다. `--write` 는 append 이고 `fetch_snp` 가 updated_at 최신을 택한다. 같은 달을 다시 쓰면 그 사이 빠진 종목의 옛 행은 남는다 (ClariFI 재내보내기와 같음).
+
+**실측 대조 (쓰기 없음, 값 차이 = 양쪽 값이 있는데 1e-8 이상 다른 행):**
+
+| 대상 | 기간 | 양쪽 값 | 값 차이 | 비고 |
+|------|------|---------|---------|------|
+| `clarifi_718708_afl` (10-30 전체 내보내기) | 202개월 | 19,212,223 | 0 | 조사 스크립트, 팩터 필드만 |
+| `clarifi_718708_afl` | 2026-09-30 | 103,647 | 0 | 종목 차이 0 |
+| `clarifi_mxcn1a_afl` | 2026-09-30 | 137,060 | 0 | 직접에만 12종목 |
+| `clarifi_mxwo_afl` | 2026-09-30 | 324,558 | 0 | 테이블에만 값 335행, 직접에만 27라인, 테이블에만 3라인 |
+
+**ClariFI 와 달라지는 점 (전환 시 MP 가 바뀜):**
+- ClariFI 종목 마스터가 2025-06-29 이후 갱신되지 않아 ISIN 변경·신규 상장 종목이 빠져 있다. 직접 적재는 바스켓 전체를 넣는다: MXWO 2026-09-30 27라인 2.08% (Exxon 0.75%, Roche, Unilever, SpaceX, Honeywell), MXCN1A 12종목 2.80% (Cambricon 1.04%, CXMT 0.87%). MXCN1A 누락은 2025-06 에 이미 7종목이라 마스터 정지만으로 설명되지 않는다 (ticker 공란 종목 제외로 추정, 메커니즘 미확인).
+- 라인 교체: CRH 는 LSE 상장폐지(2026-04) 라인 -> NYSE 라인, EQR 은 ISIN 이 새 gvkey(Vivmark) 로 이동, STMicro 는 primary 가 2026-08-31 부터 파리 라인. gvkey 가 바뀌면 그 종목의 팩터 이력은 이어지지 않는다.
+- 속성은 최신값: 9/30 MXWO ticker 10, sec 3, country 7 종목이 다르다 (FISV, MRSH 등 ClariFI 쪽이 옛값). `fetch_country_map` 은 `MAX(country)` 라 country 가 바뀐 종목은 거래세 국가가 사전순 큰 값으로 잡힌다.
+- 과거 달은 건드리지 않는다. 빠져 있던 달의 이력은 그대로 비어 있다.
+- `clarifi_mxcn1a_afl` 2026-09-30 은 10-02 와 10-20 두 번 내보내져 옛 이름과 새 이름 필드가 함께 있다. `fetch_snp` 는 fld 별로 최신을 택하므로 그 달을 다시 받으면 코드상 약어 PM1M, AstAdjChg1YOCF, AdjSTO_6M 행이 중복된다 (재다운로드로 확인하지는 않음, 현 parquet 은 10-02 기준이라 중복 없음).
+
+**원천 변경 주의:** 10-02 내보낸 9/30 값 중 MXWO 335행, MXCN1A 104행 (parquet 기준) 이 지금 원천에서 NULL 이다. 10-30 ClariFI 재내보내기도 NULL 이라 ClariFI 이월이 아니라 원천이 바뀐 것이다 (5~8월은 0행). 월초 일찍 적재한 값은 나중에 달라질 수 있다.
+
+**파싱 차이:** `fetch_snp` 는 첫 괄호, `map_fields` 는 마지막 괄호를 약어로 본다. `Financial Leverage (Equity Multiplier) (FL)` 은 download 에서 약어가 'Equity Multiplier' 가 되어 factor_info merge 로 빠진다 (예전부터 같음).
+
+### 2.5 일별 데이터 (direct-load-daily, `db/daily_direct.py` / `db/daily_read.py`, 2026-11-06)
+
+세 지수(MXWO 990100, MXCN1A 133333, 718708)의 날짜별 구성 라인과 S&P AFL 일별 팩터값을 `kb_global` 에 쌓고, 가격·거래량·VWAP·총수익은 view 로 읽는다. 월간 파이프라인(`clarifi_*_afl` -> parquet -> mp)은 바뀌지 않는다. 표 정의는 `db/sql/daily_tables.sql`.
+
+**원칙: 원천이 지우면 쌓고, 원천이 보관하면 읽는다.**
+- 원천 일별 팩터 표(`ciqAfValueDailyNA` / `ciqAFValueDailyIntl`)는 약 22영업일만 남긴다. NA 시작일이 11-01 에 09-30, 11-06 에 10-05 였다. Intl 은 10월 이후 완전하고 그 전은 드문드문 남는다. 지나간 날은 다시 받을 수 없어 매일 쌓는다.
+- 가격 표(`sec_dprc`, `ciqPriceEquity`, `sec_dtrt`, `exrt_dly`)는 전 이력을 보관한다. 분할이 생기면 분할계수와 수정가가 과거까지 다시 쓰이므로 복사하지 않고 view 로 읽는다.
+
+| 객체 | 내용 | 키 | 방식 |
+|------|------|-----|------|
+| `univ_line_d` | 날짜별 구성 라인, 바스켓 ISIN·비중, 가격 라인 `px_iid` | universe, ddt, gvkey, iid | 매일 교체 (파생 행) |
+| `afl_value_d` | AFL 기본 팩터(`factorRelativeId=1001`) 일별 값, 세 지수 라인 합집합만 | asOfDate, factorId, gvkey, iid, universeId | 바뀐 값만 UPDATE, 없는 행만 INSERT, 삭제 없음 |
+| `v_px_d` | 시가·고가·저가·종가·거래량·VWAP·분할계수·총수익계수·총수익지수·달러 환율·거래 여부 | gvkey, iid, ddt | view |
+| `direct_load_d_log` | 실행 기록 (원천 행, 저장 행, 삽입, 수정, 상태) | run_at, ddt, part | 쓰기 실행만 |
+
+**적재 흐름** (`run_direct_load_daily`, 날짜 오름차순):
+1. 원천 날짜: 최근 45평일마다 (표, 유니버스, 날짜) seek. 날짜 전체 집계는 표가 커서 수 분 걸린다 (Intl 2111 하루 1,790만 행).
+2. 받을 날짜: 아직 없는 날짜 + 최근 5개 (원천 사후 수정 반영).
+3. 라인: 그날 바스켓 -> `select_lines` (월간과 같은 규칙, 연속성 기준 = 직전 저장일, 첫 실행은 월간 표 이력) -> `price_lines`.
+4. 팩터값: 라인 합집합을 서버 임시표에 넣고 원천에서 `#stage` 로 모은 뒤 비교·반영. 행을 Python 으로 옮기지 않는다 (하루 약 68만 행, 원천 한 번에 약 3초).
+5. 가드: 새 행이 저장 행의 90% 미만이면 그 (날짜, 원천) 또는 (지수, 날짜) 를 건너뛰고 `skip` 으로 남긴다.
+
+**가격 라인 (`price_lines`):** 같은 회사에 그날 같은 ISIN 이 붙은 라인 중 선택 라인 거래대금(30일 중앙값, 달러)이 최다 라인의 5% 미만이면 가격은 최다 라인에서 읽는다. 첫 적재에서 MXWO 6라인이 바뀌었다 (ACN 독일 -> NYSE, CHKP, GRAB, CCEP 네덜란드 -> 미국, INVEB·EDV 미국 장외 -> 본국). 팩터는 그대로 선택 라인(`iid`)에 붙는다.
+
+**view 칸 정의 (`v_px_d`):**
+- 시가·고가·저가·거래량·VWAP = CIQ `ciqPriceEquity` 저장값의 무수정 환산 (가격 x `adjustmentFactor`, 거래량 / `adjustmentFactor`), CIQ 행이 없으면 `sec_dprc`. 종가 = `sec_dprc.prccd`. 무수정 현지통화 (영국 파운드, 이스라엘 셰켈: bbg 펜스·아고라와 100배 차이).
+- `split_adj` = `ajexdi` (분할·주식배당, 현재 = 1, 분할 때 과거 행이 바뀐다). 수정가 = `px_close / split_adj`.
+- `tr_factor` = `sec_dtrt.trfd` (세전 현금배당과 현물분배를 그날 종가로 재투자한 누적 배수, 앞으로만 쌓인다, 스팬 없으면 1). `tr_idx = px_close / split_adj x tr_factor`. 배당수정주가 = `tr_idx` / 최신 `tr_factor`.
+- `usd_per_local` = `exrt_dly` 같은 날(없으면 7일 이내 직전) USD / 현지 (GBP 기준 환율). 월간 `M_RETURN` 과 같은 환율이라 718708 10월 415종목이 오차 1e-16 으로 재현된다.
+- `traded` = 0 이면 휴장일 이월 행 (`prcstd = 5`). `sec_dprc` 는 휴장일에도 직전 가격 행을 둔다: 1년 46.5만 라인-일 중 3.9%, 그중 18,354/18,356 행이 CIQ 행·거래량 없음과 겹친다.
+
+**실측 정의 차이 (2026-11-01~06, 참고용):**
+- 거래량: 미국 CIQ = bbg 복합 100% (`sec_dprc` 는 장 마감 후 Form T 누락), 영국 = bbg LN + XL + X1 (장외 보고 포함, 고가·저가도 장외 체결 포함), 호주 = AT, 캐나다 = CT, 독일 ~= GY, 스위스 = SIX + 장외 일부, 스페인은 장외 제외.
+- VWAP: 일본·캐나다·프랑스·독일·스위스·이탈리아·덴마크는 bbg 와 5bp 이내 100%, 영국 47%, 홍콩 57%, 마오타이 51%. 참고용으로만 쓴다.
+- 총수익: MSCI gross 대비 1년 누적 10bp 이내 라인 98% (718708 99.75%, MXCN1A 99.81%, MXWO 97.2%). 일본은 MSCI 가 배당을 추정치로 넣고 나중에 정정해 일별로는 S&P 가 맞다 (S&P = bbg). 호주 프랭킹 크레딧은 넣지 않는다 (bbg gross 는 현금 / 0.7, bbg net 은 S&P 와 같다). 뉴질랜드 보충배당은 넣는다.
+- 스핀오프: `trfd` 는 스핀코 첫 체결가(시가) 기준이다 (FDX 2026-06-01 FDXF 164.00, Hexagon 2026-05-21 Octave 185.00). 전일 종가 보유자의 당일 종가 가치 기준 정답과 FDX +2.12% vs +0.37%, Hexagon -5.21% vs -7.83% 로 다르다. 특별배당 이중 계상 1건 (GLEN 2026-08-27, 0.255 vs 실제 0.17달러). MSCI·bbg 로 보정하는 표(`tr_override_d`, 영국 거래량 `px_override_d`)는 아직 만들지 않았다.
+
+**운영:**
+- 작업 스케줄러 `QMind Daily Load` 매일 12:10 (11시 로더 실행으로 유럽·미국 전일 종가가 들어온 뒤, 13시 실행과 안 겹치게, 2026-11-07 14:30 에서 변경), `db/direct_load_daily.cmd`, 로그 `data/daily_load/daily_load.log` (git 제외). 사용자 로그온 상태에서만 돈다 (비밀번호 저장 없이 등록). 며칠 못 돌아도 다음 실행이 원천에 남은 날짜를 전부 받는다 (45평일 탐색). 원천 창(약 22영업일)보다 오래 멈추면 그만큼은 사라진다. 가격은 view 라 따라잡을 것이 없다.
+- 원천 도착 시각 (KST, 2026-10-26~11-07 `xf_control.xfu_ActualZipFile`·`xfu_ActivityDetail`, Xpressfeed Loader 실행 01·07·11·13·18시). 이 작업 시각은 가격이 보이는 시각과 무관하다 (view 는 원천을 바로 읽는다):
+  - `sec_dprc`·`sec_dtrt`·`exrt_dly` (종가·총수익·환율): 아시아 D 는 S&P 게시 D+1 00:35~00:56 -> 01시(늦으면 07시) 적재. 유럽·미주 D 는 게시 D+1 09:23~09:46 -> 11:05~11:20 적재. D+1 아침 8시대에는 미국·유럽·캐나다 전일 종가가 없다 (11-07 08:48 실측: MXWO 미국 476라인 중 11-06 0개, 일본·호주·홍콩은 전부).
+  - `ciqPriceEquity` (시가·고가·저가·거래량·VWAP): 미국 마감 뒤 파일 게시 D+1 07:13~07:17 -> 11시 적재 (07시 실행보다 몇 분 늦게 올라온다).
+  - AFL 일별 팩터: APAC D -> D+1 07시, NA·EMEA·LATAM D -> D+2 01시. 그래서 오전 8시 이후 어느 시각에 돌려도 받는 팩터 날짜는 같다.
+- 첫 적재 2026-11-06: 40일 (Intl 09-07~, NA 10-05~), 1,890만 행, 기본 팩터 442개, 값 NULL 31%. 09-14·09-28 은 원천에 세 지수 라인 값이 없다. 같은 명령 재실행 시 삽입·수정 0.
+- 확인: `SELECT * FROM kb_global.dbo.direct_load_d_log ORDER BY run_at DESC` (status `skip` 이면 원천이 덜 들어온 날).
+
+**QMind 에서 쓰는 법** (`db/daily_read.py`, 키는 월간과 같은 gvkeyiid):
+
+```python
+from db.daily_read import universe_lines, daily_factors, daily_prices
+
+lines = universe_lines("MXWO", "2026-11-01", "2026-11-30")              # [ddt, gvkeyiid, px_gvkeyiid, isin, wgt]
+fac = daily_factors("MXWO", "2026-11-01", "2026-11-30", ["PM12M1M"])     # [ddt, gvkeyiid, factor, val], factor = ciqAfFactor 약어
+px = daily_prices(lines["px_gvkeyiid"].unique(), "2026-11-01", "2026-11-30")  # 가격 칸 + ret_loc, ret_usd
+```
+
+- 팩터는 `gvkeyiid`, 가격·수익률은 `px_gvkeyiid` 로 붙인다 (`lines` 로 두 키를 잇는다).
+- 수익률: `ret_loc` = `tr_idx` 비율 (배당 세전 현금 포함), `ret_usd` = 같은 날 환율을 곱한 비율. 기본 `traded_only=True` 라 휴장일 0 수익률이 생기지 않고 휴장 다음 날 수익률이 휴장 기간을 덮는다. 달력 정렬이 필요하면 `traded_only=False`.
+- 쓰임: MP 북의 일별 팩터 노출 추적, 일별 성과 대조, 일별 신호 연구. 월간 파이프라인 입력(`M_RETURN` 가격수익률)은 바꾸지 않는다 (총수익 전환 A/B 기각, 2026-11-02).
+- MTD 손익 리포트는 PORT 와 맞추려고 bbg 수익률을 계속 쓴다 (§3.6). `daily_prices` 는 대조·대체용.
+
+**리스크 모델에서 쓰는 법** (설계 문서 `docs/superpowers/specs/2026-10-27-risk-model-optimizer-design.md`, 브랜치 `risk_model`):
+- 노출은 설계대로 월말 팩터 (일별 팩터는 필요 없다). `afl_value_d` 는 2026-09 부터라 과거 노출에 쓸 수 없다.
+- 일별 종목 수익률은 `daily_prices(...)["ret_loc"]` 로 얻을 수 있다. 설계의 MSCIDB `SECURITY_REPORT` + GLOBAL `AA_market` 대비 장점: 키가 gvkeyiid 라 노출과 바로 붙는다 (MSCI ISIN 으로 붙이면 BM 비중 88.7~98% 만 붙던 매핑 관문이 없다), `sec_dprc` 는 2011-07 이전 이력도 있다, 일본 배당 시점이 맞다. 차이: 스핀오프는 시가 기준, 휴장일은 `traded` 로 거른다.
+- 통화 팩터 수익률은 설계대로 MSCI 환율(WM/Reuters 런던 16시)을 쓴다. `usd_per_local`(S&P 환율)은 미국 밖 종목에서 MSCI·bbg 와 일별 5~12bp 다르다. 그래서 로컬 수익률과 환율은 따로 다룬다.
+- 일별 ESTU·BM 은 설계대로 `msci_idx_wgt` 를 쓴다. `univ_line_d` 는 2026-09 부터라 과거 구성에 쓸 수 없다.
+- 어느 출처를 주 원천으로 할지는 Phase 1 대조로 정한다 (이 절은 선택지를 기록할 뿐 설계를 바꾸지 않는다).
+
 ---
 
 ## 3. 핵심 의존성 (Dependencies & Touched Files)
@@ -477,6 +584,7 @@ main.py
 |--------|------|-------------|
 | **MS SQL Server** (.env에서 SERVER_NAME 로드) | 팩터 원시 데이터 | download 커맨드 실패. mp 커맨드는 기존 parquet으로 동작 가능 |
 | **ODBC Driver 17** | DB 연결 | download 불가 |
+| **`xf_target` / MSCIDB** (.env `*_NAME2`, `USER_NAME`) | direct-load 원천 / 바스켓 | direct-load 실패 (기존 테이블과 parquet 은 영향 없음) |
 | `.env` 파일 | DB 비밀번호, 서버 주소, 계정명 등 | `USER_PWD`, `SERVER_NAME`, `USER_NAME` 미설정 시 각각 warning 로그 + DB 연결 실패 |
 | `factor_info.csv` | 팩터 메타데이터 (200+ 팩터) | merge 실패 → 분석 불가 |
 | `data/hardcoded_weights.csv` | 프로덕션 고정 가중치 (10개 팩터) | hardcoded 모드 실패 |
@@ -777,6 +885,11 @@ w /= w.sum()
 # n_styles x cap < 100% 면 제약 자체가 infeasible -> 경고 후 위반 상태로 진행
 ```
 
+water-filling (2026-11-10). 구 구현은 "넘은 스타일 축소 -> 전체 재정규화"를 10회 반복했는데, 재정규화가
+방금 캡에 맞춘 스타일까지 다시 키워 캡에 닿는 스타일이 여럿인 달에 수렴하지 못했다 (MXWO 6개월 주기
+백테스트 101개월 중 54개월 초과, 최대 0.79%p). 지금은 고정한 스타일을 다시 건드리지 않으므로 캡이
+가능한 구성이면 항상 정확히 맞는다. 캡이 걸리지 않는 달의 비중은 구 구현과 같다.
+
 ---
 
 ## 6. Walk-Forward 백테스트 레이어
@@ -850,6 +963,42 @@ A/B 실측 (실데이터, 2026-08-31 기준일, 허용오차 비교):
 - 실행 시간: MXWO 백테스트 15.4분 (구 방식 격리 실행 16.0분, 동일 머신) — 절감은 약 1분으로 예상(30%)보다 작다. 병목이 aggregate 가 아니라 IS rank/cut 과 Tier 2 라는 §6.2.1 진단과 일치.
 - mp(운용) 산출물은 horizon 개념이 없어 영향 없음 — 2026-08-31 4종 + history byte-identical.
 
+### 6.2.3 롤링 IS 창 구간만 집계 (2026-11-10)
+
+6. **Tier 1 창 시작 절단** (`_apply_rules_and_aggregate(start=...)`): 롤링 IS(`is_window_months`)에서는 창 밖 과거 수익률이 선정·가중·OOS 어디에도 쓰이지 않는다. 라벨 프레임을 `ddt >= IS 시작월` 로 잘라 집계한다 (기간 필터를 프레임 복사 전에 적용). expanding(MXCN1A)은 `start=None` 이라 경로가 같다.
+   - mp(`label_window_frames`)는 이미 창 구간만 집계하므로 후보 집합이 같아진다. 구 엔진은 창 밖 과거 달에 NaN 이 있는 팩터(예: `stdRR36M`)를 `dropna(axis=1)` 로 통째로 뺐고 mp 는 후보로 두었다.
+   - 저장용 `factor_returns_matrix` 는 대시보드 상관 국면 차트가 전체 이력을 쓰므로, 실행 끝에 마지막 규칙으로 전체 이력을 한 번 더 집계한다 (저장 파일 동일).
+
+실측 (MXWO, 6개월 주기, 기준일 2026-10-31, OOS 101개월, 산출물은 scratch 로 격리):
+
+| | 실행 시간 | factor-level Sharpe | 배포 기준 Sharpe / MDD | 선정 집합 변경 월 |
+|---|---|---|---|---|
+| 변경 전 | 899초 | 0.631 | 0.547 / -1.94% | - |
+| 변경 후 | 851초 | 0.631 | 0.547 / -1.94% | 0 / 101 |
+
+- 월별 수익률 차이 최대 2.4e-18, 배포 기준 순수익·저장 행렬은 완전 동일. 후보로 돌아온 팩터는 순위가 낮아 한 번도 선정되지 않았다.
+- 단축은 5% 에 그친다. 절감은 이력이 창보다 길어지는 후반 회차에만 생기고(마지막 회차 집계 9.9초 -> 3.4초), 전체 이력 저장용 집계 1회가 더해진다. 남은 병목은 IS 창 5분위 재계산(회차당 23~30초)이다.
+
+### 6.2.4 편출 종목의 편출 월 수익 누락 - 영향 실측 (2026-11-10)
+
+엔진 북의 t 월 행은 "val(t-1) 순위 x M_RETURN(t)" 이고 t 월에 데이터가 있는 종목만 담는다. t-1 말에는
+있었지만 t 월에 지수에서 빠진 종목은 실제 북이라면 들고 있었을 텐데 백테스트에서는 그 달 수익이 빠진다.
+일별 가격 view(`v_px_d`, `db/daily_read.daily_prices`)로 편출 월 달러 가격수익률을 구해 영향을 쟀다
+(잔류 표본 검산: M_RETURN 과 상관 0.9999, 98.6% 가 0.5%p 이내).
+
+| | MXWO (100개월) | MXCN1A (165개월) |
+|---|---|---|
+| 편출 건수 (월평균) | 1,296 (10.6) | 1,498 (15.8) |
+| 편출 월 수익, 유니버스 평균 대비 | -1.48%p (t -3.5) | -0.37%p (t -1.3) |
+| 북 gross 중 편출 종목 (롱 / 숏, 월평균) | 0.23% / 0.53% | 0.39% / 0.84% |
+| 배포 기준 보정 (연) | +0.3bp (대응 t 0.13) | -1.2bp (대응 t -0.67) |
+| Sharpe 현행 -> 보정 | 0.592 -> 0.594 | 0.700 -> 0.685 |
+
+편출 종목은 부진하지만(MXWO) 롱과 숏 양쪽에 있어 서로 상쇄된다 (롱 -0.44bp, 숏 +0.44bp/월, 배수 전).
+**영향이 오차 범위라 행 구조(val(t-1) + t 월 수익)를 바꾸지 않는다.** 보정은 근사다 - 편출 종목의 비중을
+엔진의 직전 달 북(한 달 전 라벨)에서 가져왔고, 같은 편 북 평균 수익과의 차이만 더했다. 비용은 뺐다.
+Sharpe 는 첫 달을 뺀 구간 값이라 `series_metrics` 수치와 다르다.
+
 ### 6.3 과적합 위험 지점
 
 | 단계 | 과적합 위험 | 이유 |
@@ -884,11 +1033,6 @@ OOS 구간에서 3개 포트폴리오의 성과(CAGR, MDD)를 동시 비교:
 | C > B > A | 정상 -- 필터링과 style_cap 제약 모두 가치 창출 |
 | B > C > A | CONSTRAINT_DRAG -- style_cap 제약이 OOS CAGR을 깎음. 과적합 아님(학습 가중치 없는 결정론적 제약): 수익 일부를 내주고 변동성/MDD를 낮추는 트레이드오프. 구 라벨 `OPTIMIZATION_OVERFIT` |
 | A > B | FILTER_OVERFIT -- rank_score 기반 Top-50 선정 자체가 과거 우연 |
-water-filling (2026-11-10). 구 구현은 "넘은 스타일 축소 -> 전체 재정규화"를 10회 반복했는데, 재정규화가
-방금 캡에 맞춘 스타일까지 다시 키워 캡에 닿는 스타일이 여럿인 달에 수렴하지 못했다 (MXWO 6개월 주기
-백테스트 101개월 중 54개월 초과, 최대 0.79%p). 지금은 고정한 스타일을 다시 건드리지 않으므로 캡이
-가능한 구성이면 항상 정확히 맞는다. 캡이 걸리지 않는 달의 비중은 구 구현과 같다.
-
 
 > C 의 가중은 IS cov 기반 ERC(학습 파라미터 없음, 대각 수축 0.2) + 결정론적 style_cap 재분배다
 > (종목단 공분산/MC 최적화는 커밋 `8dfb64e`에서 제거됨).
@@ -962,42 +1106,6 @@ python main.py backtest <start> <end> [옵션]
 - `optimization_mode = "erc"` (cov 48M + 대각수축 0.2 + Spinu CCD; 수축 0.2는 2026-08-07 전구간 스윕 채택 — mxwo_sharpe_ladder_20260729.md 7차)
 - `ts_mom_window = 3`, `ts_mom_scale = 0.2` (TS 모멘텀 틸트; 창 4→3 2026-08-07, 감쇠 0.5→0.2 2026-08-10 전구간 스윕 — mxwo_sharpe_ladder_20260729.md 8차)
 - **배포 기준 성과 회계** (2026-08-19): `backtest` 가 종목단 재구성을 함께 수행해 `stock_level_series_{기준일}.csv` 산출 (월별 book_gross_before / multiplier / long·short_exposure / gross·cost·tax·net_return / turnover). 구현은 `service/backtest/stock_level.py` — `stock_weights_at`(구 mp_level 전용에서 공용화) + `build_stock_series` + `series_metrics`. 엔진은 `_apply_rules_and_aggregate(out_frames=...)` 로 라벨 프레임을 받아 **프레임이 살아있는 루프 안에서** 월별 종목 순비중만 뽑아 축적한다 (프레임 자체는 무거워 미보관). 통합 덕에 mp_level 별도 실행(20분, 워크포워드 중복)이 불필요 — 백테스트 15.6분 -> 약 21분.
-### 6.2.3 롤링 IS 창 구간만 집계 (2026-11-10)
-
-6. **Tier 1 창 시작 절단** (`_apply_rules_and_aggregate(start=...)`): 롤링 IS(`is_window_months`)에서는 창 밖 과거 수익률이 선정·가중·OOS 어디에도 쓰이지 않는다. 라벨 프레임을 `ddt >= IS 시작월` 로 잘라 집계한다 (기간 필터를 프레임 복사 전에 적용). expanding(MXCN1A)은 `start=None` 이라 경로가 같다.
-   - mp(`label_window_frames`)는 이미 창 구간만 집계하므로 후보 집합이 같아진다. 구 엔진은 창 밖 과거 달에 NaN 이 있는 팩터(예: `stdRR36M`)를 `dropna(axis=1)` 로 통째로 뺐고 mp 는 후보로 두었다.
-   - 저장용 `factor_returns_matrix` 는 대시보드 상관 국면 차트가 전체 이력을 쓰므로, 실행 끝에 마지막 규칙으로 전체 이력을 한 번 더 집계한다 (저장 파일 동일).
-
-실측 (MXWO, 6개월 주기, 기준일 2026-10-31, OOS 101개월, 산출물은 scratch 로 격리):
-
-| | 실행 시간 | factor-level Sharpe | 배포 기준 Sharpe / MDD | 선정 집합 변경 월 |
-|---|---|---|---|---|
-| 변경 전 | 899초 | 0.631 | 0.547 / -1.94% | - |
-| 변경 후 | 851초 | 0.631 | 0.547 / -1.94% | 0 / 101 |
-
-- 월별 수익률 차이 최대 2.4e-18, 배포 기준 순수익·저장 행렬은 완전 동일. 후보로 돌아온 팩터는 순위가 낮아 한 번도 선정되지 않았다.
-- 단축은 5% 에 그친다. 절감은 이력이 창보다 길어지는 후반 회차에만 생기고(마지막 회차 집계 9.9초 -> 3.4초), 전체 이력 저장용 집계 1회가 더해진다. 남은 병목은 IS 창 5분위 재계산(회차당 23~30초)이다.
-
-### 6.2.4 편출 종목의 편출 월 수익 누락 - 영향 실측 (2026-11-10)
-
-엔진 북의 t 월 행은 "val(t-1) 순위 x M_RETURN(t)" 이고 t 월에 데이터가 있는 종목만 담는다. t-1 말에는
-있었지만 t 월에 지수에서 빠진 종목은 실제 북이라면 들고 있었을 텐데 백테스트에서는 그 달 수익이 빠진다.
-일별 가격 view(`v_px_d`, `db/daily_read.daily_prices`)로 편출 월 달러 가격수익률을 구해 영향을 쟀다
-(잔류 표본 검산: M_RETURN 과 상관 0.9999, 98.6% 가 0.5%p 이내).
-
-| | MXWO (100개월) | MXCN1A (165개월) |
-|---|---|---|
-| 편출 건수 (월평균) | 1,296 (10.6) | 1,498 (15.8) |
-| 편출 월 수익, 유니버스 평균 대비 | -1.48%p (t -3.5) | -0.37%p (t -1.3) |
-| 북 gross 중 편출 종목 (롱 / 숏, 월평균) | 0.23% / 0.53% | 0.39% / 0.84% |
-| 배포 기준 보정 (연) | +0.3bp (대응 t 0.13) | -1.2bp (대응 t -0.67) |
-| Sharpe 현행 -> 보정 | 0.592 -> 0.594 | 0.700 -> 0.685 |
-
-편출 종목은 부진하지만(MXWO) 롱과 숏 양쪽에 있어 서로 상쇄된다 (롱 -0.44bp, 숏 +0.44bp/월, 배수 전).
-**영향이 오차 범위라 행 구조(val(t-1) + t 월 수익)를 바꾸지 않는다.** 보정은 근사다 - 편출 종목의 비중을
-엔진의 직전 달 북(한 달 전 라벨)에서 가져왔고, 같은 편 북 평균 수익과의 차이만 더했다. 비용은 뺐다.
-Sharpe 는 첫 달을 뺀 구간 값이라 `series_metrics` 수치와 다르다.
-
   - **목표 노출 고정**: `mp_target_gross` 설정 시 매월 `배수=target/gross`. 실측 book gross 는 **70.3%~111.5%** 로 넓게 변동(2시점 스냅샷만 보면 85~90%로 좁아 보이나 전 구간은 다름) -> 고정 배수는 노출·TE 를 그만큼 흔든다. 적용 배수 범위 0.359~0.569 (중앙 0.448).
   - ⚠ **월별 목표 고정은 상수배가 아니다**: netting 이 심한 달을 키우고 덜한 달을 줄이므로 수익 경로가 바뀐다 -> Sharpe 도 이동(0.739 -> 0.734). 고정 배수였다면 불변. 테스트로 이 구분을 고정(`test_stock_level.py`).
   - **TE**: 시장중립 오버레이 -> 액티브수익=오버레이수익 -> `TE = 월 net_return std x sqrt(12)`. 벤치마크 비중 데이터 불필요 (파케이에 `MXWO_WGT` 없음). 실현(ex-post) 기준.

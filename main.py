@@ -3,6 +3,9 @@
 사용법:
     python main.py download 2023-01-01 2023-12-31          # 전체 다운로드
     python main.py download 2023-01-01 2023-12-31 --incremental  # 증분 다운로드
+    python main.py direct-load 2026-10-31                  # ClariFI 없이 원천에서 빌드 + 대상 테이블과 대조 (쓰기 없음)
+    python main.py direct-load 2026-10-31 --write          # 위 + 대상 테이블에 append
+    python main.py direct-load-daily [--write]             # 세 지수 일별 라인·팩터를 kb_global 에 쌓음 (기본은 건수만)
     python main.py mp 2023-01-01 2023-12-31                # Model Portfolio 생성
     python main.py mp test tests/fixtures/test_data.csv                   # 테스트 모드
     python main.py mp 2023-01-01 2023-12-31 --report       # 별첨 리포트 북만 생성
@@ -50,6 +53,18 @@ def main(argv: list[str] | None = None) -> int:
     parser_download.add_argument("--no-validate", action="store_true",
                                   help="Skip post-download validation checks.")
 
+    # direct-load: S&P 원천(xf_target) -> clarifi_*_afl 형식 월말 행 (ClariFI 내보내기 대체)
+    parser_direct = subparsers.add_parser("direct-load", help="Build a month from source tables and compare with the target table.")
+    parser_direct.add_argument("date", type=str, help="Calendar month end in YYYY-MM-DD format.")
+    parser_direct.add_argument("--write", action="store_true", help="Append built rows to the target table (default: compare only).")
+    parser_direct.add_argument("--table", type=str, default=None, help="Target table (default: config universe).")
+    parser_direct.add_argument("--basket", type=str, default=None, help="MSCIDB basket code (default: config universe).")
+
+    # direct-load-daily: 원천 일별 AFL (약 22영업일 롤링) -> kb_global univ_line_d / afl_value_d (세 지수, BENCHMARK 무관)
+    parser_daily = subparsers.add_parser("direct-load-daily", help="Accumulate daily lines and factor values for all universes.")
+    parser_daily.add_argument("--write", action="store_true", help="Write to kb_global (default: counts only).")
+    parser_daily.add_argument("--end", type=str, default=None, help="Last date to look for in YYYY-MM-DD (default: today).")
+
     # mp: pipeline-ready parquet → Model Portfolio → CSV — README [1]~[7]
     parser_report = subparsers.add_parser("mp", help="Generate Model Portfolio from downloaded data.")
     parser_report.add_argument("args", nargs="+", help="'test <filename>' or '<start_date> <end_date>'")
@@ -88,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in ("mp", "backtest"):
         _split_args(parser, args)
 
-    if args.command not in ("download", "mp", "backtest", "viz"):
+    if args.command not in ("download", "direct-load", "direct-load-daily", "mp", "backtest", "viz"):
         parser.print_help()
         return 1
 
@@ -105,6 +120,12 @@ def main(argv: list[str] | None = None) -> int:
             incremental=args.incremental,
             validate=not args.no_validate,
         )
+    elif args.command == "direct-load":
+        _run_direct_load(args)
+    elif args.command == "direct-load-daily":
+        from db.daily_direct import run_direct_load_daily
+
+        run_direct_load_daily(write=args.write, end=args.end)
     elif args.command == "mp":
         run_model_portfolio_pipeline(
             args.start_date, args.end_date,
@@ -117,6 +138,19 @@ def main(argv: list[str] | None = None) -> int:
         _run_viz(args)
 
     return 0
+
+
+def _run_direct_load(args):
+    """direct-load 커맨드: 기본은 대조만, --write 일 때만 대상 테이블에 append."""
+    from config import BENCHMARK, PARAM, UNIVERSES
+    from db.factor_direct import run_direct_load
+
+    run_direct_load(
+        args.date,
+        table=args.table or PARAM["universe"],
+        basket_code=args.basket or UNIVERSES[BENCHMARK]["basket"],
+        write=args.write,
+    )
 
 
 def _run_viz(args):

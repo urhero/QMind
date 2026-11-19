@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 BENCHMARK = os.getenv("BENCHMARK") or "MXWO"
 
 UNIVERSES = {
-    "MXCN1A": {"universe": "clarifi_mxcn1a_afl", "server_name": "10.206.1.19,9433", "db_name": "GLOBAL"},
-    "MXWO":   {"universe": "clarifi_mxwo_afl",   "server_name": "10.206.101.14",    "db_name": "kb_global"},
+    # basket = direct-load 의 MSCIDB 바스켓 코드 (spg_msci_wgt_Daily)
+    "MXCN1A": {"universe": "clarifi_mxcn1a_afl", "server_name": "10.206.1.19,9433", "db_name": "GLOBAL", "basket": "133333"},
+    "MXWO":   {"universe": "clarifi_mxwo_afl",   "server_name": "10.206.101.14",    "db_name": "kb_global", "basket": "990100"},
 }
 _U = UNIVERSES[BENCHMARK]  # 미등록 유니버스(오타)는 여기서 KeyError 로 즉시 실패
 
@@ -30,6 +31,17 @@ PARAM = {
     "user_name": os.getenv("USER_NAME", ""),
     "user_pwd": os.getenv("USER_PWD", ""),
     "odbc_name": os.getenv("ODBC_NAME", "ODBC Driver 17 for SQL Server"),
+}
+
+# direct-load (db/factor_direct.py): S&P 원천 xf_target 과 대상 테이블은 *_NAME2 계정, 바스켓은 MSCIDB + USER_NAME
+DIRECT_LOAD = {
+    "server_name": os.getenv("SERVER_NAME2") or "10.206.101.14",
+    "target_db": "kb_global",  # clarifi_*_afl 위치. .env DB_NAME2 는 원천(xf_target)을 가리킬 수 있어 쓰지 않는다
+    "source_db": "xf_target",
+    "user_name": os.getenv("USER_NAME2", ""),
+    "user_pwd": os.getenv("USER_PWD2", ""),
+    "basket_server": "10.206.1.119,9433",
+    "basket_db": "MSCIDB",
 }
 
 if not PARAM["user_pwd"]:

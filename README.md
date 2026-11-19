@@ -85,6 +85,21 @@ BENCHMARK=MXCN1A python main.py backtest 2009-12-31 2026-08-31
 
 > 연도별 분할 구조, 검증 항목 상세, fallback 경로는 [research.md §2.3, §4.3](research.md) 참조.
 
+### 직접 적재 (ClariFI 없이)
+- `python main.py direct-load 2026-10-31` — S&P 원천(`xf_target`)에서 월말 행을 만들어 대상 테이블과 대조 (쓰기 없음, 한 달 수십 초)
+- `python main.py direct-load 2026-10-31 --write` — 대조 후 대상 테이블에 append. 이후 `download --incremental` 은 그대로
+- 다른 바스켓: `--table clarifi_718708_afl --basket 718708_bf`
+- `.env` 에 `SERVER_NAME2`, `USER_NAME2`, `USER_PWD2` 필요. 원천은 `xf_target`, 대상 테이블은 `kb_global` 고정 (바스켓은 `USER_NAME`, `USER_PWD` 로 MSCIDB 조회)
+
+> 규칙, 실측 대조, ClariFI 와 달라지는 점은 [research.md §2.4](research.md) 참조.
+
+### 일별 데이터 (세 지수 공통)
+- `python main.py direct-load-daily --write` — MXWO·MXCN1A·718708 의 날짜별 구성 라인과 S&P AFL 일별 팩터값을 `kb_global` 에 쌓는다. 매일 12:10 작업 스케줄러(`QMind Daily Load`, `db/direct_load_daily.cmd`)가 돌린다. `--write` 없이 돌리면 건수만 보여준다
+- 원천 일별 팩터는 약 22영업일만 남으므로 빠진 날은 다시 받을 수 없다. 가격·거래량·VWAP·총수익은 복사하지 않고 view `v_px_d` 로 읽는다
+- 읽기: `from db.daily_read import universe_lines, daily_factors, daily_prices`
+
+> 표 구조, 규칙, QMind·리스크 모델에서 쓰는 법은 [research.md §2.5](research.md) 참조.
+
 ---
 
 ## [2] 5분위(Quintile) 포트폴리오 구성
