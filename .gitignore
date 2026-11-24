@@ -210,6 +210,8 @@ data/*/*
 # 원천 추출본(data/*/msci/, data/*/global/, data/*/bbg/)은 계속 무시.
 !data/*/risk/
 !data/*/classification.parquet
+# ST·*ST 이력 (CNINFO 공시 기반, research/st_history/) — 원본·판정 기록까지 추적 (2026-11-24 사용자 결정)
+!data/*/st_history/
 #config.py
 .cursorindexingignore
 node_modules/
