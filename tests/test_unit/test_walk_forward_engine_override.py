@@ -59,6 +59,22 @@ def test_override_can_change_top_factor_count():
     assert pp["top_factor_count"] == 18  # override 가 이김
 
 
+def test_save_outputs_false_skips_output_dir_writes(monkeypatch, tmp_path):
+    """save_outputs=False 면 정식 산출물 경로에 아무것도 쓰지 않는다 (실험 러너 보호).
+
+    저장 분기는 실데이터 run() 에서만 타므로 (test_file 모드는 원래 저장 생략)
+    유닛 테스트에서는 소스의 가드가 두 저장 블록 모두에 걸려 있는지를 확인한다.
+    """
+    import inspect
+
+    assert WalkForwardEngine().save_outputs is True
+    assert WalkForwardEngine(save_outputs=False).save_outputs is False
+    src = inspect.getsource(WalkForwardEngine.run)
+    assert "save = self.save_outputs and not test_file" in src
+    # 두 to_csv 저장 모두 `if save and` 가드 아래에 있다
+    assert src.count("if save and") == src.count(".to_csv(") == 2
+
+
 # ── factor-level 백테스트 비용 보정 (_resolve_backtest_cost_bps) ──────────────
 
 def test_backtest_cost_default_is_18bp():

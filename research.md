@@ -817,7 +817,7 @@ Tier 3 (매월): OOS 수익률 조회
 
 ### 6.2.2 Tier 1 계산 구간 절단 + zero-filter 기준점 제외 (2026-09-16)
 
-4. **Tier 1 horizon 절단** (`_apply_rules_and_aggregate(horizon=...)`): 각 Tier 1 은 OOS `i .. i+factor_rebal_months-1` 만 소비하는데 구 코드는 매번 parquet **전 기간**의 팩터 L/S 수익률을 계산했다. 라벨 프레임을 `ddt <= all_dates[min_is + i + factor_rebal_months]` (턴오버 lookahead `w.shift(-1)` 분 +1) 로 잘라 미래 구간 계산을 생략한다. 이것은 성능만의 변화가 아니다 — `aggregate_factor_returns` 가 **어느 한 달이라도 NaN 인 팩터 열을 통째로 버리므로**(`dropna(axis=1)`), 구 코드는 "미래 월에 롱 또는 숏 분위가 비는 팩터"를 현재 시점 선정에서 제외하는 look-ahead 를 갖고 있었다. 절단 후에는 그 시점까지의 데이터로만 판단한다. 마지막 Tier 1 의 horizon 은 데이터 끝이라 `factor_returns_matrix_*.csv`(viz 용) 는 전 기간 그대로다.
+4. **Tier 1 horizon 절단** (`_apply_rules_and_aggregate(horizon=...)`): 각 Tier 1 은 OOS `i .. i+factor_rebal_months-1` 만 소비하는데 구 코드는 매번 parquet **전 기간**의 팩터 L/S 수익률을 계산했다. 라벨 프레임을 `ddt <= all_dates[min_is + i + factor_rebal_months]` (턴오버 lookahead `w.shift(-1)` 분 +1) 로 잘라 미래 구간 계산을 생략한다. 이것은 성능만의 변화가 아니다 — `aggregate_factor_returns` 가 **어느 한 달이라도 NaN 인 팩터 열을 통째로 버리므로**(`dropna(axis=1)`), 구 코드는 "미래 월에 롱 또는 숏 분위가 비는 팩터"를 현재 시점 선정에서 제외하는 look-ahead 를 갖고 있었다. 절단 후에는 그 시점까지의 데이터로만 판단한다. 마지막 Tier 1 의 horizon 은 데이터 끝이라 `factor_returns_matrix_*.csv`(viz 용) 는 전 기간 그대로다. 이 파일과 `stock_level_series_*.csv` 는 `run()` 이 `OUTPUT_DIR` 기준일 폴더에 직접 쓰는 부수 산출물이라, 엔진을 직접 부르는 실험 러너는 `WalkForwardEngine(save_outputs=False)` 로 꺼야 한다 (2026-11-25) — 켜 두면 변형 케이스가 정식 백테스트 산출물(대시보드 입력)을 덮어쓰고, 병렬 워커끼리 같은 파일에 쓴다.
    byte-identical 이 아닌 이유 두 가지: (a) 위 look-ahead 제거 (선정 집합이 달라지는 달이 있을 수 있음), (b) numpy pairwise 합산의 ULP 차이(배열 길이가 바뀌면 덧셈 묶음이 달라져 1e-16 수준). 회귀 검증은 byte-diff 대신 허용오차 비교(`scratchpad/compare_ab.py`, 1e-12) 로 한다.
 5. **zero-filter 기준점 제외** — §4.2.7.
 

@@ -93,7 +93,7 @@ def run_case(name, pp_delta, eng_delta):
     eng_kw = {**BASE_ENGINE, **eng_delta}
     is_window = eng_kw.pop("is_window_months")
     engine = WalkForwardEngine(pipeline_params_override=(pp_delta or None),
-                               is_window_months=is_window, **eng_kw)
+                               is_window_months=is_window, save_outputs=False, **eng_kw)
     result = engine.run("2015-06-30", "2026-06-30")
     result.to_csv(str(OUT / f"wf_{name}.csv"))
     df = pd.read_csv(OUT / f"wf_{name}.csv", parse_dates=["date"]).set_index("date")

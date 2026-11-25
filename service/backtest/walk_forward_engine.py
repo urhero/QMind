@@ -305,6 +305,10 @@ class WalkForwardEngine:
         top_factors: 상위 팩터 수. None(기본)이면 config top_factor_count (production parity).
         selection_hysteresis: 선정 히스테리시스 margin (rank_score 단위,
             기본 0.0=off). 챌린저가 기존 보유 팩터를 이 격차 이상 이겨야 교체.
+        save_outputs: False 면 run() 이 OUTPUT_DIR 에 factor_returns_matrix /
+            stock_level_series 를 쓰지 않는다. 실험 러너용 — 변형 케이스가 정식
+            백테스트 산출물(대시보드 입력)을 덮어쓰거나 병렬 워커끼리 같은 파일에
+            쓰는 것을 막는다. 기본 True (CLI backtest 동작 불변).
     """
 
     def __init__(
@@ -316,6 +320,7 @@ class WalkForwardEngine:
         selection_hysteresis: float = 0.0,
         pipeline_params_override: dict | None = None,
         is_window_months: int | None = None,
+        save_outputs: bool = True,
     ):
         self.min_is_months = min_is_months
         self.factor_rebal_months = factor_rebal_months
@@ -326,6 +331,7 @@ class WalkForwardEngine:
         # 롤링 IS 윈도우 (개월). None=expanding(기존). 지정 시 Tier 1 규칙 학습과
         # Tier 2 선정/가중 IS 를 모두 최근 N개월로 제한 — 레짐 적응용 (2026-07-28).
         self.is_window_months = is_window_months
+        self.save_outputs = save_outputs
 
     def run(
         self,
@@ -573,7 +579,8 @@ class WalkForwardEngine:
 
         # 전기간 팩터 수익률 행렬 저장 (마지막 Tier 1 규칙 기준 — 상관 국면 분석/viz용.
         # 성과 산출물이 아니라 상관 구조 참고 데이터. 테스트 모드는 생략)
-        if not test_file and precomputed_ret_df is not None and not precomputed_ret_df.empty:
+        save = self.save_outputs and not test_file
+        if save and precomputed_ret_df is not None and not precomputed_ret_df.empty:
             try:
                 precomputed_ret_df.to_csv(dated(
                     OUTPUT_DIR / "factor_returns_matrix.csv",
@@ -582,7 +589,7 @@ class WalkForwardEngine:
                 logger.warning("factor_returns_matrix 저장 실패 (%s)", e)
 
         # 배포 기준 시계열 저장 (노출/배수/TE) — 종목단 netting 반영
-        if not test_file and stock_monthly:
+        if save and stock_monthly:
             try:
                 # 목표 노출 일정(Active Risk 조정 이력) 반영 — 시점별로 다른 규모
                 _tg_path, _tg_def = UNIVERSE_DATA_DIR / "mp_target_gross.csv", pp.get("mp_target_gross")
