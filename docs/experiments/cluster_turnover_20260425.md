@@ -5,7 +5,7 @@
 - 백테스트 기간: `2009-12-31` ~ `2026-03-31`
 - 공통 파라미터: min_is=36, factor_rebal=6, weight_rebal=3, top=50, ranking=tstat
 
-> **읽기 전 주의 (2026-11-25 사후 검토):** (1) n ≤ 16 케이스는 `per_cluster_keep` 이 자동으로 올라갔다 (`cluster_12` = 5 등) — n_clusters 효과와 섞여 있고, `cluster_18_keep1`·`keep2` 는 keep3 과 같은 실행이다. (2) `OPTIMIZATION_OVERFIT` 은 현행 기준 제약 비용(`CONSTRAINT_DRAG`)이며 과적합 증거가 아니다 — §4 추천은 이 판정으로 걸러낸 결과다. (3) 스무딩 케이스의 회전율은 메모리 비중 기준이라 실거래 회전율이 아니다. 상세: `docs/superpowers/specs/2026-04-24-cluster-turnover-experiment-design.md` §9.
+> **읽기 전 주의 (2026-11-25 사후 검토):** (1) n ≤ 16 케이스는 `per_cluster_keep` 이 자동으로 올라갔다 (`cluster_12` = 5 등) — n_clusters 효과와 섞여 있고, `cluster_18_keep1`·`keep2` 는 keep3 과 같은 실행이다. (2) `OPTIMIZATION_OVERFIT` 은 현행 기준 제약 비용(`CONSTRAINT_DRAG`)이며 과적합 증거가 아니다 — §4 추천은 이 판정으로 걸러낸 결과다. (3) 스무딩 케이스의 회전율은 메모리 비중 기준이라 실거래 회전율이 아니다. (4) `cluster_18` 계열의 Sharpe 우위는 2023 년 이후 구간에서만 나온다 — ~2017·2018~22 구간은 baseline 보다 낮다 (`period_sharpe_analysis.md`). 상세: `docs/superpowers/specs/2026-04-24-cluster-turnover-experiment-design.md` §9.
 
 ## 1. 성과 요약 (OOS, Net-of-cost)
 

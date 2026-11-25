@@ -344,7 +344,7 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 
 | # | 지적 | 판정 | 근거 (확인한 것) |
 |---|---|---|---|
-| 1 | `per_cluster_keep=3` 고정이 코드에서 조용히 깨짐 | 수용 | `cluster_and_dedup_top_n` 의 가드(`n_clusters × keep < top_n` 이면 keep 을 올림)는 설계 당시에도 있었다. top_n=50 이면 n ≤ 16 인 케이스 전부 해당. 결과 파일이 증거: `cluster_18_keep1`·`keep2` 가 `cluster_18`(keep3) 과 모든 수치가 같다 |
+| 1 | `per_cluster_keep=3` 고정이 코드에서 조용히 깨짐 | 수용 | `cluster_and_dedup_top_n` 의 가드(`n_clusters × keep < top_n` 이면 keep 을 올림)는 설계 당시에도 있었다. top_n=50 이면 n ≤ 16 인 케이스 전부 해당. 결과 파일이 증거: `cluster_18_keep1`·`keep2` 가 `cluster_18`(keep3) 과 모든 수치가 같다 (18×1, 18×2 < 50 이라 둘 다 `ceil(50/18)` = 3 으로 올라감) |
 | 2 | 케이스마다 실제 선정 수가 다름 (baseline 50 vs cluster_18 평균 41.1) | 수용 | `cluster_size_diagnostics.md`: 평균 41.15, 33~49. 가장 큰 클러스터가 평균 53% (최대 79%) |
 | 3 | 팩터 비중 회전율은 종목단 매매비용과 1:1 이 아님 (교차 상쇄) | 수용 | `mp_level_cost_20260703.md`: 실제 비용 / 팩터별 전액 계상 = 0.530~0.574 |
 | 4 | EMA 가 기록상 회전율만 낮추고 실제 배포 비중 회전율은 못 줄임 | 수용 | `2026-06-05-absolute-step-smoothing-design.md` §1: 메모리 비중 2.63→2.66 인데 배포 비중 2.63→3.48. 회전율 지표가 메모리 기준이었다 |
@@ -352,7 +352,7 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 | 6 | `B > C > A` 를 과적합(OPT_OVERFIT)으로 분류 | 수용 | 현행 `calc_funnel_value_add` 는 같은 패턴을 `CONSTRAINT_DRAG`(제약 비용, 과적합 아님)로 부른다. C 단계에 학습되는 가중이 없다. 이 분류 때문에 baseline·cluster_12 가 추천에서 빠졌다 |
 | 7 | verdict 분기 불완전 (`UNCATEGORIZED` 가 종합 verdict 표에 없음, B==C 처리 없음) | 수용 | §5.2 그대로. 결과에서 소수 둘째 자리까지 같은 값이 서로 다른 판정을 받았다: `baseline_nocap` 2.55/2.55 → OK, `cluster_15` 1.68/1.68 → OPT_OVERFIT, `cluster_40` 1.11/1.11 → FILTER_OVERFIT |
 | 8 | OOS 백분위 임계 `>= 60%` vs 코드 `> 0.60` | 일부 | 정확히 0.60 인 경우만 다르다. 실험 값은 전부 47~52% 라 결과에 영향 없음. 현행 코드도 docstring(`>= 0.60`)과 분기(`<= 0.60` 은 보통)가 서로 다르다 |
-| 9 | alpha {0.7, 0.5} 가 너무 약함 | 일부 | 결론은 맞다 (baseline 회전율 0.045 → 0.040 → 0.037, 이후 0.3·0.2·0.1 을 추가로 돌림). 리뷰의 "반감기 0.61 분기" 는 틀림: 직전 비중이 남는 비율 = 1−α 이므로 α=0.7 은 0.58 회차(1.7개월), α=0.5 는 1 회차(3개월) |
+| 9 | alpha {0.7, 0.5} 가 너무 약함 | 수용 | 결론은 맞다 (baseline 회전율 0.045 → 0.040 → 0.037, 이후 0.3·0.2·0.1 을 추가로 돌림). 반감기: 직전 비중이 남는 비율 = 1−α 이므로 α=0.7 은 0.58 회차(1.7개월), α=0.5 는 1 회차(3개월). (정정 2026-11-25: 처음에는 리뷰 수치를 "0.61 분기" 로 읽고 틀렸다고 적었으나, 원문은 "0.6~1 분기 (약 1.7~3개월)" 범위 표기였고 붙여넣는 과정에서 물결표가 빠진 것 — 리뷰 수치가 맞다) |
 | 10 | cluster_12·24 × alpha 교차 케이스 없음 | 일부 | 한 축씩 바꾸는 것은 의도한 설계다 (1 케이스 40~60분, §1.3 이 전수조사를 비목표로 둠). 다만 "교차 효과는 이 그리드로 알 수 없다" 는 한계가 적혀 있지 않았다 |
 | 11 | 전 구간 수치 하나로 비교, 기간 분해를 뒤로 미룸 | 수용 | `period_sharpe_analysis.md`: cluster_18 은 ~2017 0.80 vs baseline 1.01, 2018~22 0.38 vs 0.61 로 열위, 2023~ 0.95 vs 0.27 로 전체가 뒤집힘 |
 | 12 | 추천 규칙에 대체 경로·하한 없음 | 수용 | 실제 자동 추천이 "회전율 0.001 차이" 로 정해졌다 (결과 §4). OK 가 3개 미만일 때 처리 없음, CAGR -0.92%p 를 걸러내는 조건 없음 |
@@ -365,13 +365,13 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 | 19 | 체크포인트·재개 없음 | 수용 | 총 153,967초 (약 43시간) 규모. 현행 `research/param_recheck_runner.py` 도 완료 케이스를 건너뛰지 않는다 |
 | 20 | §6.1.B 의 `test_data.csv`·`total_aggregated_weights_*`·`meta_data.csv` 가 틀림 | 제외 (당시 결함 아님) / 현행화 | 당시에는 맞는 경로·파일명. 현행은 `tests/fixtures/test_data.csv`, `output/{BENCHMARK}/test/weights_*` |
 | 21 | 실험 스크립트는 `research/` | 현행화 | 커밋 `4724c6c` 에서 `scripts/` → `research/`. 러너 스크립트는 이후 삭제됨 |
-| 22 | 최종 후보는 `research/mp_level_cost_backtest.py` 로 검증 | 일부 | 종목단 실측이 필요하다는 것은 맞다. 다만 그 스크립트는 엔진과 어긋나 있다 (2026-11-11 점검: Top50 고정, horizon 없음). 실제 기준은 엔진이 내는 `stock_level_series` |
+| 22 | 최종 후보는 `research/mp_level_cost_backtest.py` 로 검증 | 일부 | 종목단 실측이 필요하다는 것은 맞다. 다만 그 스크립트는 엔진과 어긋나 있다 (2026-11-11 점검, 2026-11-25 재확인: `top_factors=50` 고정, horizon 절단 없음, 목표 노출 일정 미적용). 실제 기준은 엔진이 내는 `stock_level_series`. 기준 안내 문구(`_TEMPLATE.md`·`config.py`·`README.md`·`research.md`)도 같이 고쳤다 |
 | 23 | EW_Top50(B 단계)이 2026-07-05 이후 dedup 이전 Top-N | 현행화 | `research.md` §6.4, `walk_forward_engine.py` `rank_topn`. 당시 결과의 B 값은 dedup 이후 선정분이라 현행 판정과 직접 비교할 수 없다 |
 
 ### 9.1 실험 결과를 읽을 때 주의할 것 (`cluster_turnover_20260425.md`)
 
 1. **n_clusters 민감도는 keep 과 섞여 있다.** 실제 keep: `cluster_8` = 7, `cluster_10`·`cluster_12` = 5, `cluster_15` = 4, n ≥ 18 = 3. keep 만 바꾼 `cluster_18_keep5` 가 Sharpe 0.814 (keep3 은 0.693) 이므로, `cluster_12` 의 0.866 중 어디까지가 클러스터 수 효과인지 이 그리드로는 가를 수 없다.
-2. **`cluster_18_keep1`·`keep2` 는 keep3 과 같은 실행이다.** keep 을 줄인 효과로 읽으면 안 된다.
+2. **`cluster_18_keep1`·`keep2` 는 keep3 과 같은 실행이다** (18×1, 18×2 < 50 → keep 이 3 으로 올라감). keep 을 줄인 효과로 읽으면 안 된다.
 3. **dedup on/off 비교에는 선정 수 차이(50 vs 평균 41)가 섞여 있다.**
 4. **`OPTIMIZATION_OVERFIT` 판정은 과적합 증거가 아니다.** 현행 기준으로는 제약 비용(`CONSTRAINT_DRAG`)이다. 따라서 "verdict OK 만 남긴다" 는 추천 규칙으로 baseline·cluster_12 가 빠진 것은 근거가 없고, 최종 권장 `combo_18_0.1` 도 이 규칙의 산물이다.
 5. **스무딩 케이스의 회전율·Net CAGR 은 메모리 비중 기준이다.** 실제 배포 비중 회전율은 줄지 않았다 (#4). `combo_*` 의 회전율 개선 수치는 실거래 비용 절감으로 읽으면 안 된다.
@@ -381,7 +381,7 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 ### 9.2 비슷한 그리드 실험을 다시 짤 때
 
 - 선정 규칙을 건드리는 케이스는 **실제 선정 수(평균·범위)와 실제 적용된 keep** 을 요약에 같이 적는다. `n_clusters × per_cluster_keep < top_n` 인 조합은 넣지 않는다.
-- 회전율·비용은 **배포 비중 기준**으로 재고, 후보는 엔진의 `stock_level_series`(종목단, 상쇄 반영)로 확인한다.
+- 회전율·비용은 **배포 비중 기준**으로 재고, 후보는 엔진의 `stock_level_series`(종목단, 상쇄 반영)로 확인한다. 단 지금은 러너에서 이 값을 바로 얻을 수 없다 (§9.3 남은 것).
 - 판정은 현행 `overfit_diagnostics` 라벨(NORMAL / CONSTRAINT_DRAG / FILTER_OVERFIT)을 그대로 쓰고, 라벨 하나로 케이스를 떨어뜨리지 않는다. 기간 분해(전반·후반·최근 3년)와 이웃 값의 고원 여부를 같이 본다.
 - 엔진을 직접 만들 때 `selection_hysteresis`·`is_window_months` 를 `PIPELINE_PARAMS` 에서 꺼내 넘기고 (엔진 기본값은 config 를 따르지 않는다), `save_outputs=False` 를 준다 (§9.3).
 - 실행 기록에 `BENCHMARK` 와 `PIPELINE_PARAMS` 전체, 엔진 생성 인자를 남긴다.
@@ -396,3 +396,8 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 - 순차 실행이어도 **실험 변형의 결과로 정식 백테스트 산출물을 덮어쓴다.** 대시보드가 읽는 파일이므로, 실험 뒤에 정식 백테스트를 다시 돌리지 않으면 변형 케이스의 값이 남는다.
 
 수정: `WalkForwardEngine(save_outputs=False)` 를 넘기면 두 파일을 쓰지 않는다 (기본 True 라 CLI `backtest` 는 그대로). `research/param_recheck_runner.py` 에 적용했다. 엔진의 `run()` 을 직접 부르는 러너를 새로 만들 때는 이 인자를 넘길 것. 이미 덮어쓰인 파일은 정식 `backtest` 를 다시 돌려야 복구된다.
+
+남은 것 (2차 리뷰 지적, 코드로 확인, 미수정 — 종목단 시계열을 쓰는 러너를 만들 때 같이 고친다):
+
+- **`save_outputs=False` 면 종목단 시계열을 얻을 방법이 없다.** `run()` 은 `stock_level_series` 를 파일로만 쓰고 `WalkForwardResult` 에는 싣지 않는다. 실험 후보를 종목단으로 확인하려면 결과 객체에 싣거나 저장 폴더를 케이스별로 바꾸는 변경이 필요하다. 지금은 `research/rebal_variant_runner.py` 처럼 `build_stock_series` 를 직접 부르는 방법뿐이다.
+- **`pipeline_params_override` 가 종목단 시계열의 비용에는 닿지 않는다.** `run()` 은 `build_stock_series` 에 override 가 반영된 `pp` 가 아니라 전역 `PIPELINE_PARAMS["transaction_cost_bps"]` 를 넘기고, `transaction_tax.tax_cost` 도 전역 `apply_country_tax` 를 읽는다. override 로 비용·거래세를 바꾼 케이스는 factor-level 수익률(`cew_return`)에만 반영된다. `param_recheck_runner.py` 의 `cost20` 은 `cew_return` 만 읽으므로 결과에 영향 없다.

@@ -399,7 +399,7 @@ HTML은 plotly.js 인라인이라 오프라인에서 단독으로 열린다.
 | `sector_short_cap` | 0.15 | 섹터별 숏 gross 상한 (전체 숏 gross 대비) — 2020-11형 숏 crowding 완화. 종목 레벨이라 factor-level 백테스트 미반영 (실측으로 평가) | `weight_construction.py` |
 | `weight_rebal_months` | 1 | Tier 2 가중 리밸 주기 (월간 채택) | `walk_forward_engine.py` |
 | `transaction_cost_bps` | 10.0 | 거래비용 (bp). MXWO 선진국 대형주 실집행 기준 (2026-07-30 사용자 지정; MXCN1A는 20) | `weight_construction.py`, `model_portfolio.py` |
-| `backtest_cost_multiplier` | 0.6 | **선정 입력용** 비용 배수 (비용 인지 선정 최적). factor-level 성과 회계는 고회전 구성에서 과소계상 — **정본 성과 판단은 `research/mp_level_cost_backtest.py` 실측 기준** (정식 ERC 실측 net Sharpe 0.368, 2026-07-30 정정) | `walk_forward_engine.py` |
+| `backtest_cost_multiplier` | 0.6 | **선정 입력용** 비용 배수 (비용 인지 선정 최적). factor-level 성과 회계는 고회전 구성에서 과소계상 — **정본 성과 판단은 종목단 실측 기준** — 엔진 산출 `stock_level_series_*.csv` (`research/mp_level_cost_backtest.py` 는 엔진과 어긋나 있음, 2026-11-11 점검. 당시 그 스크립트 실측: 정식 ERC net Sharpe 0.368, 2026-07-30 정정) | `walk_forward_engine.py` |
 | `top_factor_count` | 50 (MXWO 60) | rank_score 상위 절단 수 (dedup off(MXWO) 또는 `cluster_method=topn` 에서 적용; winner_median 은 미사용). backtest CLI `--top-factors` 미지정 시 이 값 | `universe.py`, `walk_forward_engine.py` (`selection.select_factors` 공유) |
 | `factor_ranking_method` | "tstat" | 팩터 랭킹 방식 (`shrunk_tstat` / `tstat` / `cagr`) | `universe.py`, `walk_forward_engine.py` (`selection.compute_rank_score` 공유) |
 | `use_cluster_dedup` | False | Hierarchical Clustering 중복 제거. **MXWO: off** — 롤링 IS와 winner_median 궁합 문제 (2026-07-28 절단 실험: on -0.12 / off +0.41 Sharpe). MXCN1A는 True | `model_portfolio.py`, `walk_forward_engine.py` |

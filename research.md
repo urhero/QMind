@@ -251,7 +251,7 @@ MXWO 에서 off** — 롤링 IS 의 출렁이는 rank_score 분포에서 winner_
 (채택 구성 실측 **2026-07-30 정정**: 초기 ERC 구현이 음의 상관에서 붕괴해 아티팩트 집중
 포트폴리오로 0.564가 나왔으나 재현 불가 판정 — 정식 Spinu CCD 솔버 기준 net 0.368 /
 gross 0.682 / 월비용 7.4bp / netting 0.65; factor-level 정본 CSV 0.390. 상세: mxwo_sharpe_ladder 로그). mp_level_cost_backtest 는 `--weight-rebal-months/--hysteresis/
---is-window-months/--pp-json` 으로 임의 구성 실측 가능 (parity 9.9e-17 검증).
+--is-window-months/--pp-json` 으로 임의 구성 실측 가능 (parity 9.9e-17 검증 — 2026-07 기준). **주의 (2026-11-11 점검)**: 이후 엔진 변경을 따라가지 못해 지금은 어긋나 있다 (`top_factors=50` 고정, horizon 절단 없음, 목표 노출 일정 미적용). 현재 종목단 실측 기준은 엔진이 내는 `stock_level_series_*.csv` 다.
 
 **2026-10-21 운용 동등 재검증 채택분 (B안)** (상세: docs/experiments/rebal1_param_recheck_20261021.md): `selection_hysteresis` 0.25->0, `top_factor_count` 50->60, `style_cap` 0.25->0.20 (`erc_shrinkage` 0.2 유지). 계기: 공식 백테스트는 Tier 1 규칙을 6개월마다 학습하지만 운용 mp 는 매달 학습한다 — 운용 동등(`--factor-rebal-months 1`) 조건의 현행 스택은 Sharpe 0.42 (6개월 기준 0.68 은 규칙 학습 위상 운: 6개 위상 0.29~0.68, 평균 0.41). 같은 조건에서 3축 변경 0.69 / MDD -194->-149bp, 앞·뒤 반쪽 모두 개선. 240 조합 그리드의 반쪽 간 순위 상관이 -0.18 이라 '최고 조합' 대신 양 반쪽 방향이 일치한 축만 채택했다. ERC 수축 0.5(A안, 0.72)는 앞 반쪽만 개선되고, dedup off 상태에서 비슷한 팩터 묶음의 합계 비중을 키우는 방향이라 미채택. 공식(규칙 6개월·위상 0) 기준 수치는 0.68->0.64 로 오히려 소폭 내려간다.
 

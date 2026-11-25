@@ -58,7 +58,7 @@ _COMMON_PARAMS = {
     # docs/experiments/mp_level_cost_20260703.md) -> 0.6 으로 근사 적용
     # (MXWO 10bp x 0.6 = 6bp; MXCN1A 20bp x 0.6 = 12bp).
     # mp(운영) 파이프라인에는 적용되지 않음 (백테스트 전용).
-    "backtest_cost_multiplier": 0.6,   # 선정 입력용 비용 (비용 인지 선정이 A/B 최적 — 0/22bp 모두 열위). 주의: factor-level 성과 회계는 고회전 구성에서 실비용 과소계상 -> 정본 성과 판단은 mp_level_cost_backtest 실측 기준
+    "backtest_cost_multiplier": 0.6,   # 선정 입력용 비용 (비용 인지 선정이 A/B 최적 — 0/22bp 모두 열위). 주의: factor-level 성과 회계는 고회전 구성에서 실비용 과소계상 -> 정본 성과 판단은 종목단 실측 기준 (엔진 산출 stock_level_series; research/mp_level_cost_backtest 는 엔진과 어긋남, 2026-11-11 점검)
     "top_factor_count": 50,            # rank_score 상위 절단 수 (dedup off 또는 cluster_method=topn 에서 적용; winner_median 은 미사용). backtest CLI --top-factors 미지정 시 이 값
     "spread_threshold_pct": 0.05,      # L/N/S 라벨링 임계값. MXWO 0.05 (2026-07-29, 0.025~0.05 고원) / MXCN1A 0.05 (2026-08-05: MDD -10.1->-6.1%, Calmar 0.305); 구 0.10
     "min_sector_stocks": 10,           # 섹터-날짜 최소 종목 수 (프로덕션)

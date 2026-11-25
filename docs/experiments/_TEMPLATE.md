@@ -22,9 +22,10 @@
 
 ## 채택 전 검증 체크리스트 (교훈 박제 — 건너뛰면 재발)
 
-- [ ] **mp_level 실측** (`research/mp_level_cost_backtest.py`): factor-level 성과 회계는
+- [ ] **종목단 실측** (엔진 산출 `stock_level_series_*.csv`): factor-level 성과 회계는
       고회전 구성에서 실비용을 과소계상한다. 정본 성과 판단은 항상 실측 기준.
-      (근거: mp_level_cost_20260703.md)
+      (근거: mp_level_cost_20260703.md. `research/mp_level_cost_backtest.py` 는 엔진과
+      어긋나 있어 그대로 쓰지 말 것 — Top50 고정·horizon 없음·목표 노출 미적용, 2026-11-11 점검)
 - [ ] **가중 알고리즘 변경 시 RC/비중 분포 검증**: 비중 상위 집중도, ~0 비중 팩터 수,
       리스크 기여 분포 확인. 좋아 보이는 숫자가 붕괴 아티팩트일 수 있다.
       (근거: mxwo_sharpe_ladder_20260729.md "0.564 철회")
