@@ -361,9 +361,9 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 | 15 | 병렬 워커가 `OUTPUT_DIR` 의 같은 파일에 동시에 씀 | 제외 (당시 결함 아님) / 현행 문제로 수용 | `factor_returns_matrix`·`stock_level_series` 저장은 2026-07-29·08-20 에 추가됐다. 현행 코드에서는 사실이고 범위가 더 넓다 — §9.3 |
 | 16 | 엔진에 `selection_hysteresis`·`is_window_months` 를 넘기지 않음 | 제외 (당시 결함 아님) / 현행화 | 당시 없던 인자. 현행은 사실: 엔진 기본값이 0.0·None 이고 config 를 따르는 것은 `main.py:_run_backtest` 뿐 |
 | 17 | `save_overfit_diagnostics` 인자 누락 | 제외 | 의사코드의 가상 래퍼다. `result.is_full_period_cagr` 는 `result` 에서 꺼낼 수 있다 |
-| 18 | logger 레벨로는 rich `track()` 이 안 꺼짐 | 수용 | `track()` 은 logging 을 거치지 않는다 (엔진 L413). stdout 을 파일로 돌리면 진행바가 `run.log` 에 쌓일 뿐이라 실행에는 지장 없었다 (43 케이스 전부 OK). cp949 충돌 주장은 확인된 바 없음 |
+| 18 | logger 레벨로는 rich `track()` 이 안 꺼짐 | 수용 | `track()` 은 logging 을 거치지 않는다 (`WalkForwardEngine.run()` 의 OOS 루프). stdout 을 파일로 돌리면 진행바가 `run.log` 에 쌓일 뿐이라 실행에는 지장 없었다 (43 케이스 전부 OK). cp949 충돌 주장은 확인된 바 없음 |
 | 19 | 체크포인트·재개 없음 | 수용 | 총 153,967초 (약 43시간) 규모. 현행 `research/param_recheck_runner.py` 도 완료 케이스를 건너뛰지 않는다 |
-| 20 | §6.1.B 의 `test_data.csv`·`total_aggregated_weights_*`·`meta_data.csv` 가 틀림 | 제외 (당시 결함 아님) / 현행화 | 당시에는 맞는 경로·파일명. 현행은 `tests/fixtures/test_data.csv`, `output/{BENCHMARK}/test/weights_*` |
+| 20 | §6.1.B 의 `test_data.csv`·`total_aggregated_weights_*`·`meta_data.csv` 가 틀림 | 제외 (당시 결함 아님) / 현행화 | 당시에는 맞는 경로·파일명. 현행은 `tests/fixtures/test_data.csv`, `output/{BENCHMARK}/test/weights_*`·`meta_data_*` (`mp test`), `walk_forward_results_*`·`overfit_diagnostics_*` (`backtest test`) |
 | 21 | 실험 스크립트는 `research/` | 현행화 | 커밋 `4724c6c` 에서 `scripts/` → `research/`. 러너 스크립트는 이후 삭제됨 |
 | 22 | 최종 후보는 `research/mp_level_cost_backtest.py` 로 검증 | 일부 | 종목단 실측이 필요하다는 것은 맞다. 다만 그 스크립트는 엔진과 어긋나 있다 (2026-11-11 점검, 2026-11-25 재확인: `top_factors=50` 고정, horizon 절단 없음, 목표 노출 일정 미적용). 실제 기준은 엔진이 내는 `stock_level_series`. 기준 안내 문구(`_TEMPLATE.md`·`config.py`·`README.md`·`research.md`)도 같이 고쳤다 |
 | 23 | EW_Top50(B 단계)이 2026-07-05 이후 dedup 이전 Top-N | 현행화 | `research.md` §6.4, `walk_forward_engine.py` `rank_topn`. 당시 결과의 B 값은 dedup 이후 선정분이라 현행 판정과 직접 비교할 수 없다 |
@@ -372,7 +372,7 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 
 1. **n_clusters 민감도는 keep 과 섞여 있다.** 실제 keep: `cluster_8` = 7, `cluster_10`·`cluster_12` = 5, `cluster_15` = 4, n ≥ 18 = 3. keep 만 바꾼 `cluster_18_keep5` 가 Sharpe 0.814 (keep3 은 0.693) 이므로, `cluster_12` 의 0.866 중 어디까지가 클러스터 수 효과인지 이 그리드로는 가를 수 없다.
 2. **`cluster_18_keep1`·`keep2` 는 keep3 과 같은 실행이다** (18×1, 18×2 < 50 → keep 이 3 으로 올라감). keep 을 줄인 효과로 읽으면 안 된다.
-3. **dedup on/off 비교에는 선정 수 차이(50 vs 평균 41)가 섞여 있다.**
+3. **dedup on/off 비교에는 선정 수 차이가 섞여 있다.** baseline 50 vs `cluster_18` 평균 41 (실측은 `cluster_18` 설정뿐 — 다른 n_clusters 케이스의 선정 수는 재지 않았다).
 4. **`OPTIMIZATION_OVERFIT` 판정은 과적합 증거가 아니다.** 현행 기준으로는 제약 비용(`CONSTRAINT_DRAG`)이다. 따라서 "verdict OK 만 남긴다" 는 추천 규칙으로 baseline·cluster_12 가 빠진 것은 근거가 없고, 최종 권장 `combo_18_0.1` 도 이 규칙의 산물이다.
 5. **스무딩 케이스의 회전율·Net CAGR 은 메모리 비중 기준이다.** 실제 배포 비중 회전율은 줄지 않았다 (#4). `combo_*` 의 회전율 개선 수치는 실거래 비용 절감으로 읽으면 안 된다.
 6. **cluster_18 계열의 우위는 2023 년 이후 구간에서만 나온다** (#11).
@@ -380,7 +380,7 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 
 ### 9.2 비슷한 그리드 실험을 다시 짤 때
 
-- 선정 규칙을 건드리는 케이스는 **실제 선정 수(평균·범위)와 실제 적용된 keep** 을 요약에 같이 적는다. `n_clusters × per_cluster_keep < top_n` 인 조합은 넣지 않는다.
+- 선정 규칙을 건드리는 케이스는 **실제 선정 수(평균·범위)와 실제 적용된 keep** 을 요약에 같이 적는다. `n_clusters × per_cluster_keep < top_n` 인 조합은 넣지 않는다 (keep 자동 상향을 피하는 조건일 뿐이다). 이 조건을 지켜도 선정 수는 맞춰지지 않는다 — `cluster_18` 은 18×3 = 54 ≥ 50 인데도 클러스터 크기 편중 때문에 평균 41 개였다. 그래서 선정 수는 통제 대상이 아니라 같이 보고하는 값으로 다루고, 선정 수가 다른 케이스 간 차이는 dedup 효과만으로 읽지 않는다. 선정 수를 같게 맞추려면 모자란 만큼 순위로 채우는 규칙이 따로 필요하다 (없음).
 - 회전율·비용은 **배포 비중 기준**으로 재고, 후보는 엔진의 `stock_level_series`(종목단, 상쇄 반영)로 확인한다. 단 지금은 러너에서 이 값을 바로 얻을 수 없다 (§9.3 남은 것).
 - 판정은 현행 `overfit_diagnostics` 라벨(NORMAL / CONSTRAINT_DRAG / FILTER_OVERFIT)을 그대로 쓰고, 라벨 하나로 케이스를 떨어뜨리지 않는다. 기간 분해(전반·후반·최근 3년)와 이웃 값의 고원 여부를 같이 본다.
 - 엔진을 직접 만들 때 `selection_hysteresis`·`is_window_months` 를 `PIPELINE_PARAMS` 에서 꺼내 넘기고 (엔진 기본값은 config 를 따르지 않는다), `save_outputs=False` 를 준다 (§9.3).
@@ -397,7 +397,8 @@ output/experiments/cluster_turnover_<YYYYMMDD_HHMMSS>/
 
 수정: `WalkForwardEngine(save_outputs=False)` 를 넘기면 두 파일을 쓰지 않는다 (기본 True 라 CLI `backtest` 는 그대로). `research/param_recheck_runner.py` 에 적용했다. 엔진의 `run()` 을 직접 부르는 러너를 새로 만들 때는 이 인자를 넘길 것. 이미 덮어쓰인 파일은 정식 `backtest` 를 다시 돌려야 복구된다.
 
-남은 것 (2차 리뷰 지적, 코드로 확인, 미수정 — 종목단 시계열을 쓰는 러너를 만들 때 같이 고친다):
+남은 것 (2차·3차 리뷰 지적, 코드로 확인, 미수정 — 종목단 시계열을 쓰는 러너를 만들 때 같이 고친다):
 
 - **`save_outputs=False` 면 종목단 시계열을 얻을 방법이 없다.** `run()` 은 `stock_level_series` 를 파일로만 쓰고 `WalkForwardResult` 에는 싣지 않는다. 실험 후보를 종목단으로 확인하려면 결과 객체에 싣거나 저장 폴더를 케이스별로 바꾸는 변경이 필요하다. 지금은 `research/rebal_variant_runner.py` 처럼 `build_stock_series` 를 직접 부르는 방법뿐이다.
 - **`pipeline_params_override` 가 종목단 시계열의 비용에는 닿지 않는다.** `run()` 은 `build_stock_series` 에 override 가 반영된 `pp` 가 아니라 전역 `PIPELINE_PARAMS["transaction_cost_bps"]` 를 넘기고, `transaction_tax.tax_cost` 도 전역 `apply_country_tax` 를 읽는다. override 로 비용·거래세를 바꾼 케이스는 factor-level 수익률(`cew_return`)에만 반영된다. `param_recheck_runner.py` 의 `cost20` 은 `cew_return` 만 읽으므로 결과에 영향 없다.
+- **`save_outputs` 테스트가 소스 문자열에 의존한다.** `test_save_outputs_false_skips_output_dir_writes` 는 `run()` 소스에서 `if save and` 와 `.to_csv(` 의 개수를 센다. `run()` 에 다른 `.to_csv(` 가 생기면 동작과 무관하게 깨진다. 실데이터 없이는 저장 분기를 탈 수 없어 이렇게 뒀다 — 위 두 건을 고칠 때 실제 동작을 확인하는 테스트로 바꾼다.
